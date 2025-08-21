@@ -204,6 +204,8 @@ Route::prefix('student')->middleware(['auth', 'student'])->group(function () {
 
     // My Calendar
     Route::get('my_calendar', [CalendarController::class, 'myCalendar'])->name('student.my-calendar');
+    // My Exam Calendar
+    Route::get('my_exam_calendar', [CalendarController::class, 'myExamCalendar'])->name('student.my-exam-calendar');
 
 });
 

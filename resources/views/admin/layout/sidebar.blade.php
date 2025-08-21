@@ -242,10 +242,18 @@
 
                 <li class="nav-item">
                     <a href="{{ route('student.my-calendar') }}" class="nav-link @if(Request::segment(2) == 'my_calendar') active @endif">
-                        <i class="nav-icon bi bi-speedometer"></i>
+                        <i class="nav-icon bi bi-calendar2-check"></i>
                         <p>
                             My Calendar
                         </p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('student.my-exam-calendar') }}"
+                        class="nav-link {{ request()->routeIs('student.my-exam-calendar') ? 'active' : '' }}">
+                        <i class="nav-icon bi bi-calendar2-check"></i>
+                        <p>My Exam Calendar</p>
                     </a>
                 </li>
 

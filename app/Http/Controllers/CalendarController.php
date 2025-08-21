@@ -6,6 +6,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\ClassModel;
 use App\Models\ClassTimetable;
+use App\Models\Exam;
+use App\Models\ExamSchedule;
+use Carbon\Carbon;
 
 class CalendarController extends Controller
 {
@@ -95,4 +98,145 @@ class CalendarController extends Controller
 
         return view('student.my_calendar', $data);
     }
+
+    public function myExamCalendar(Request $request)
+    {
+        $student = Auth::user();
+        abort_unless($student && $student->role === 'student', 403);
+
+        $header = 'My Exam Calendar';
+
+        if (!$student->class_id) {
+            return view('student.my_exam_calendar', [
+                'header_title'     => $header,
+                'exams'            => collect(),
+                'selectedExamId'   => null,
+                'selectedExam'     => null,
+                'events'           => [],
+                'studentClassName' => null,
+            ])->with('info', 'You are not assigned to any class yet.');
+        }
+
+        // Exams that have schedules for this student's class AND active subjects
+        $exams = Exam::whereIn('id', function ($q) use ($student) {
+                $q->from('exam_schedules as es')
+                    ->join('class_subjects as cs', function ($j) use ($student) {
+                        $j->on('cs.subject_id', '=', 'es.subject_id')
+                          ->where('cs.class_id', $student->class_id)
+                          ->where('cs.status', 1)
+                          ->whereNull('cs.deleted_at');
+                    })
+                    ->select('es.exam_id')
+                    ->where('es.class_id', $student->class_id)
+                    ->whereNull('es.deleted_at')
+                    ->groupBy('es.exam_id');
+            })
+            ->orderBy('name')
+            ->get(['id','name']);
+
+        // Pick selected exam (?exam_id=) else default to first available
+        $requestedExamId = $request->get('exam_id');
+        $selectedExamId  = $requestedExamId !== null ? (int) $requestedExamId : ($exams->first()->id ?? 0);
+        if (!$exams->firstWhere('id', $selectedExamId)) {
+            $selectedExamId = $exams->first()->id ?? null;
+        }
+        $selectedExam = $exams->firstWhere('id', $selectedExamId);
+
+        $rows = collect();
+        if ($selectedExam) {
+            $rows = ExamSchedule::with('subject:id,name')
+                ->join('class_subjects as cs', function ($j) use ($student) {
+                    $j->on('cs.subject_id', '=', 'exam_schedules.subject_id')
+                      ->where('cs.class_id', $student->class_id)
+                      ->where('cs.status', 1)
+                      ->whereNull('cs.deleted_at');
+                })
+                ->where('exam_schedules.class_id', $student->class_id)
+                ->where('exam_schedules.exam_id',  $selectedExam->id)
+                ->whereNull('exam_schedules.deleted_at')
+                ->select('exam_schedules.*')
+                ->orderBy('exam_schedules.exam_date')
+                ->orderBy('exam_schedules.start_time')
+                ->get();
+        }
+
+        // --- Helpers to normalize date/time safely ---
+        $parseDateIso = function ($value) {
+            $value = (string) $value;
+            $candidates = ['Y-m-d', 'Y/m/d', 'd-m-Y', 'd/m/Y', 'm/d/Y', 'd.m.Y'];
+            foreach ($candidates as $fmt) {
+                try {
+                    return Carbon::createFromFormat($fmt, $value)->format('Y-m-d');
+                } catch (\Throwable $e) {}
+            }
+            try { return Carbon::parse($value)->format('Y-m-d'); } catch (\Throwable $e) {}
+            return null;
+        };
+        $parseTimeIso = function ($value) {
+            $value = (string) $value;
+            $candidates = ['H:i:s', 'H:i', 'h:i A', 'g:i A', 'h:iA', 'g:iA'];
+            foreach ($candidates as $fmt) {
+                try {
+                    return Carbon::createFromFormat($fmt, $value)->format('H:i:s');
+                } catch (\Throwable $e) {}
+            }
+            try { return Carbon::parse($value)->format('H:i:s'); } catch (\Throwable $e) {}
+            return null;
+        };
+
+        // Map to FullCalendar events (ISO datetimes)
+        $events = [];
+        foreach ($rows as $row) {
+            $dateIso  = $parseDateIso($row->exam_date);
+            $startIso = $parseTimeIso($row->start_time);
+            $endIso   = $parseTimeIso($row->end_time);
+
+            if (!$dateIso || !$startIso) {
+                // skip invalid rows
+                continue;
+            }
+
+            $title = ($row->subject->name ?? 'Exam');
+            if ($selectedExam?->name) {
+                $title .= ' — ' . $selectedExam->name;
+            }
+
+            $events[] = [
+                'title'   => $title,
+                'start'   => "{$dateIso}T{$startIso}",
+                'end'     => $endIso ? "{$dateIso}T{$endIso}" : null,
+                'allDay'  => false,
+                'extendedProps' => [
+                    'room'    => $row->room ?? null,
+                    'full'    => $row->full_mark ?? null,
+                    'pass'    => $row->pass_mark ?? null,
+                    'subject' => $row->subject->name ?? null,
+                ],
+            ];
+        }
+
+        $class = ClassModel::select('id','name')->find($student->class_id);
+
+        return view('student.my_exam_calendar', [
+            'header_title'     => $header,
+            'exams'            => $exams,
+            'selectedExamId'   => $selectedExam?->id,
+            'selectedExam'     => $selectedExam,
+            'events'           => array_values($events),
+            'studentClassName' => $class?->name,
+        ]);
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
