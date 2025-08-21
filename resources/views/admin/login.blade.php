@@ -56,7 +56,9 @@
       <div class="card">
         <div class="card-body login-card-body">
           <p class="login-box-msg">Sign in</p>
+
           @include('admin.message')
+          
           <form action="{{ url('admin/login') }}" method="post">
             @csrf
             <div class="input-group mb-3">

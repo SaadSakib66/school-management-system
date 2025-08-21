@@ -23,46 +23,50 @@
         <!--begin::Row-->
             <div class="row g-4">
 
-                <div class="col-md-6">
+                {{-- @include('admin.message') --}}
+
+                <div class="col-md-8">
                 <!--begin::Quick Example-->
                     <div class="card card-primary card-outline mb-4">
-                        <!--begin::Header-->
-                        {{-- <div class="card-header"><div class="card-title">Quick Example</div></div> --}}
-                        <!--end::Header-->
-                        <!--begin::Form-->
-                        <form>
+
+                        <form action="{{ isset($user) ? route('admin.admin.update-admin', $user->id) : route('admin.admin.add-admin') }}" method="POST">
+                            @csrf
                         <!--begin::Body-->
                         <div class="card-body">
+
                             <div class="mb-3">
-                            <label for="name" class="form-label">Name</label>
-                            <input
-                                type="text"
-                                name="name"
-                                class="form-control"
-                                placeholder="Name"
-                                required
-                            />
+                                <label for="name" class="form-label">Name</label>
+                                <input type="text" name="name" class="form-control" placeholder="Name" value="{{ old('name', $user->name ?? '') }}" required />
                             </div>
+
                             <div class="mb-3">
-                            <label for="email" class="form-label">Email address</label>
-                            <input
-                                type="email"
-                                name="email"
-                                class="form-control"
-                                placeholder="Email"
-                                required
-                            />
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" name="email" class="form-control" placeholder="Email" value="{{ old('email', $user->email ?? '') }}" required />
+                                <span class="text-danger">{{ $errors->first('email')}}</span>
                             </div>
+
                             <div class="mb-3">
-                            <label for="password" class="form-label">Password</label>
-                            <input type="password" name="password" class="form-control" placeholder="Password" required />
+                                <label for="password" class="form-label">Password</label>
+                                <input type="password" name="password" class="form-control" placeholder="Password" {{ isset($user) ? '' : 'required' }} />
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="role" class="form-label">Role</label>
+                                <select class="form-select" name="role" id="role" required>
+                                    <option value="" disabled {{ !isset($user) ? 'selected' : '' }}>Select a role</option>
+                                    @foreach (['admin', 'teacher', 'student', 'parent'] as $role)
+                                        <option value="{{ $role }}" {{ (old('role', $user->role ?? '') == $role) ? 'selected' : '' }}>
+                                            {{ ucfirst($role) }}
+                                        </option>
+                                    @endforeach
+                                </select>
                             </div>
 
                         </div>
                         <!--end::Body-->
                         <!--begin::Footer-->
                         <div class="card-footer">
-                            <button type="submit" class="btn btn-primary">Submit</button>
+                            <button type="submit" class="btn btn-primary">{{ isset($user) ? 'Update' : 'Submit' }}</button>
                         </div>
                         <!--end::Footer-->
                         </form>

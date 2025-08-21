@@ -16,7 +16,7 @@
         <ul class="navbar-nav ms-auto">
 
         <!--end::Navbar Search-->
-        
+
         <!--begin::Notifications Dropdown Menu-->
         <li class="nav-item dropdown">
             <a class="nav-link" data-bs-toggle="dropdown" href="#">
@@ -49,8 +49,26 @@
         <!--begin::User Menu Dropdown-->
         <li class="nav-item dropdown user-menu">
             <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
+            @php
+                $user = Auth::user();
+
+                // Map roles to their photo columns
+                $photoField = match($user->role) {
+                    'admin'   => 'admin_photo',
+                    'teacher' => 'teacher_photo',
+                    'student' => 'student_photo',
+                    'parent'  => 'parent_photo',
+                    default   => null,
+                };
+
+                // Get photo path or default image
+                $photoPath = !empty($photoField) && !empty($user->$photoField)
+                    ? asset('storage/' . $user->$photoField)
+                    : asset('images/default-profile.png');
+            @endphp
+
             <img
-                src="{{ asset('admin/images/Saad Bin Hasan Sakib.jpg')}}"
+                src="{{ $photoPath }}"
                 class="user-image rounded-circle shadow"
                 alt="User Image"
             />
@@ -60,12 +78,12 @@
             <!--begin::User Image-->
             <li class="user-header text-bg-primary">
                 <img
-                src="{{ asset('admin/images/Saad Bin Hasan Sakib.jpg')}}"
-                class="rounded-circle shadow"
-                alt="User Image"
+                    src="{{ $photoPath }}"
+                    class="user-image rounded-circle shadow"
+                    alt="User Image"
                 />
                 <p>
-                Saad Bin Hasan Sakib
+                    {{ ucfirst(Auth::user()->name) }} {{ ucfirst(Auth::user()->last_name) }}
                 </p>
             </li>
             <!--end::User Image-->
@@ -82,7 +100,18 @@
             <!--end::Menu Body--> --}}
             <!--begin::Menu Footer-->
             <li class="user-footer">
-                <a href="#" class="btn btn-default btn-flat">Profile</a>
+                @php
+                    $user = Auth::user();
+                    $accountRoute = match($user->role) {
+                        'admin' => route('admin.account'),
+                        'teacher' => route('teacher.account'),
+                        'student' => route('student.account'),
+                        'parent'  => route('parent.account'),
+                        default   => '#', // fallback if no role match
+                    };
+                @endphp
+
+                <a href="{{ $accountRoute }}" class="btn btn-default btn-flat">Profile</a>
                 <a href="{{ url('admin/logout') }}" class="btn btn-default btn-flat float-end">Sign out</a>
             </li>
             <!--end::Menu Footer-->

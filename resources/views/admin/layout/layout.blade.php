@@ -18,7 +18,9 @@
             />
         <!--end::Primary Meta Tags-->
         <!--begin::Fonts-->
+        @stack('styles')
         @include('admin.layout.styles')
+
 
     </head>
     <!--end::Head-->
@@ -42,7 +44,9 @@
         <!--end::App Wrapper-->
         <!--begin::Script-->
         <!--begin::Third Party Plugin(OverlayScrollbars)-->
+        @stack('scripts')
         @include('admin.layout.scripts')
+
         <!--end::Script-->
     </body>
     <!--end::Body-->

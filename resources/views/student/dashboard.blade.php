@@ -10,7 +10,7 @@
                 <div class="col-sm-6">
                     <h3 class="mb-0">Dashboard</h3>
                 </div>
-                
+
             </div>
             <!--end::Row-->
         </div>
@@ -148,7 +148,7 @@
             <!--begin::Row-->
             <div class="row">
                 <!-- Start col -->
-                <div class="col-lg-7 connectedSortable">
+                {{-- <div class="col-lg-7 connectedSortable">
                     <div class="card mb-4">
                         <div class="card-header">
                             <h3 class="card-title">Attendance Chart</h3>
@@ -158,7 +158,7 @@
                         </div>
                     </div>
 
-                </div>
+                </div> --}}
 
             </div>
             <!-- /.row (main row) -->

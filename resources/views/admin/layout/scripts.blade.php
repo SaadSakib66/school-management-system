@@ -1,4 +1,4 @@
-<script
+{{-- <script
     src="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.10.1/browser/overlayscrollbars.browser.es6.min.js"
     integrity="sha256-dghWARbRe2eLlIJ56wNB+b760ywulqK3DzZYEpsg2fQ="
     crossorigin="anonymous"
@@ -243,4 +243,199 @@
 
     const sparkline3 = new ApexCharts(document.querySelector('#sparkline-3'), option_sparkline3);
     sparkline3.render();
+</script> --}}
+
+
+<!--begin::Third Party Plugin(OverlayScrollbars)-->
+<script
+  src="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.10.1/browser/overlayscrollbars.browser.es6.min.js"
+  integrity="sha256-dghWARbRe2eLlIJ56wNB+b760ywulqK3DzZYEpsg2fQ="
+  crossorigin="anonymous"
+></script>
+<!--end::Third Party Plugin(OverlayScrollbars)-->
+
+<!--begin::Required Plugin(popperjs for Bootstrap 5)-->
+<script
+  src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"
+  integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r"
+  crossorigin="anonymous"
+></script>
+<!--end::Required Plugin(popperjs for Bootstrap 5)-->
+
+<!--begin::Required Plugin(Bootstrap 5)-->
+<script
+  src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js"
+  integrity="sha384-0pUGZvbkm6XF6gxjEnlmuGrJXVbNuzT9qBBavbLwCsOGabYfZo0T0to5eqruptLy"
+  crossorigin="anonymous"
+></script>
+<!--end::Required Plugin(Bootstrap 5)-->
+
+<!--begin::Required Plugin(AdminLTE)-->
+<script src="{{ asset('admin/js/adminlte.js') }}"></script>
+<!--end::Required Plugin(AdminLTE)-->
+
+<!-- OPTIONAL LIBRARIES (kept global, usage below is guarded) -->
+<script
+  src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"
+  integrity="sha256-ipiJrswvAR4VAx/th+6zWsdeYmVae0iJuiR+6OqHJHQ="
+  crossorigin="anonymous"
+></script>
+
+<script
+  src="https://cdn.jsdelivr.net/npm/apexcharts@3.37.1/dist/apexcharts.min.js"
+  integrity="sha256-+vh8GkaU7C9/wbSLIcwq82tQ2wTf44aOHA8HlBMwRI8="
+  crossorigin="anonymous"
+></script>
+
+<script
+  src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/js/jsvectormap.min.js"
+  integrity="sha256-/t1nN2956BT869E6H4V1dnt0X5pAQHPytli+1nTZm2Y="
+  crossorigin="anonymous"
+></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/maps/world.js"
+  integrity="sha256-XPpPaZlU8S/HWf7FZLAncLg2SAkP8ScUTII89x9D3lY="
+  crossorigin="anonymous"
+></script>
+
+<!--begin::Global initializers (GUARDED)-->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // ========= OverlayScrollbars (guarded) =========
+  (function () {
+    const SELECTOR_SIDEBAR_WRAPPER = '.sidebar-wrapper';
+    const Default = {
+      scrollbarTheme: 'os-theme-light',
+      scrollbarAutoHide: 'leave',
+      scrollbarClickScroll: true,
+    };
+    try {
+      const sidebarWrapper = document.querySelector(SELECTOR_SIDEBAR_WRAPPER);
+      const OS = window.OverlayScrollbarsGlobal && window.OverlayScrollbarsGlobal.OverlayScrollbars;
+      if (sidebarWrapper && typeof OS !== 'undefined') {
+        OS(sidebarWrapper, {
+          scrollbars: {
+            theme: Default.scrollbarTheme,
+            autoHide: Default.scrollbarAutoHide,
+            clickScroll: Default.scrollbarClickScroll,
+          },
+        });
+      }
+    } catch (e) {
+      // swallow to avoid breaking other scripts
+      console.debug('OverlayScrollbars init skipped:', e.message);
+    }
+  })();
+
+  // ========= SortableJS (guarded) =========
+  (function () {
+    try {
+      const hasSortableLib = typeof window.Sortable !== 'undefined';
+      const connectedSortables = document.querySelectorAll('.connectedSortable');
+      if (hasSortableLib && connectedSortables.length) {
+        connectedSortables.forEach((el) => {
+          new window.Sortable(el, { group: 'shared', handle: '.card-header' });
+        });
+        document.querySelectorAll('.connectedSortable .card-header').forEach((hdr) => {
+          hdr.style.cursor = 'move';
+        });
+      }
+    } catch (e) {
+      console.debug('Sortable init skipped:', e.message);
+    }
+  })();
+
+  // ========= ApexCharts: Revenue chart (guarded) =========
+  (function () {
+    try {
+      const hasApex = typeof window.ApexCharts !== 'undefined';
+      const revenueEl = document.querySelector('#revenue-chart');
+      if (hasApex && revenueEl) {
+        const sales_chart_options = {
+          series: [
+            { name: 'Digital Goods', data: [28, 48, 40, 19, 86, 27, 90] },
+            { name: 'Electronics',  data: [65, 59, 80, 81, 56, 55, 40] },
+          ],
+          chart: { height: 300, type: 'area', toolbar: { show: false } },
+          legend: { show: false },
+          colors: ['#0d6efd', '#20c997'],
+          dataLabels: { enabled: false },
+          stroke: { curve: 'smooth' },
+          xaxis: {
+            type: 'datetime',
+            categories: ['2023-01-01','2023-02-01','2023-03-01','2023-04-01','2023-05-01','2023-06-01','2023-07-01'],
+          },
+          tooltip: { x: { format: 'MMMM yyyy' } },
+        };
+        const chart = new window.ApexCharts(revenueEl, sales_chart_options);
+        chart.render();
+      }
+    } catch (e) {
+      console.debug('Revenue chart skipped:', e.message);
+    }
+  })();
+
+  // ========= jsVectorMap (guarded) =========
+  (function () {
+    try {
+      const hasMapLib = typeof window.jsVectorMap !== 'undefined';
+      const mapEl = document.querySelector('#world-map');
+      if (hasMapLib && mapEl) {
+        // Example dataset (unused by default demo config)
+        const visitorsData = { US: 398, SA: 400, CA: 1000, DE: 500, FR: 760, CN: 300, AU: 700, BR: 600, IN: 800, GB: 320, RU: 3000 };
+        new window.jsVectorMap({ selector: '#world-map', map: 'world' });
+      }
+    } catch (e) {
+      console.debug('Vector map skipped:', e.message);
+    }
+  })();
+
+  // ========= ApexCharts: Sparklines (guarded) =========
+  (function () {
+    try {
+      const hasApex = typeof window.ApexCharts !== 'undefined';
+      if (!hasApex) return;
+
+      const option_sparkline1 = {
+        series: [{ data: [1000, 1200, 920, 927, 931, 1027, 819, 930, 1021] }],
+        chart: { type: 'area', height: 50, sparkline: { enabled: true } },
+        stroke: { curve: 'straight' },
+        fill: { opacity: 0.3 },
+        yaxis: { min: 0 },
+        colors: ['#DCE6EC'],
+      };
+      const option_sparkline2 = {
+        series: [{ data: [515, 519, 520, 522, 652, 810, 370, 627, 319, 630, 921] }],
+        chart: { type: 'area', height: 50, sparkline: { enabled: true } },
+        stroke: { curve: 'straight' },
+        fill: { opacity: 0.3 },
+        yaxis: { min: 0 },
+        colors: ['#DCE6EC'],
+      };
+      const option_sparkline3 = {
+        series: [{ data: [15, 19, 20, 22, 33, 27, 31, 27, 19, 30, 21] }],
+        chart: { type: 'area', height: 50, sparkline: { enabled: true } },
+        stroke: { curve: 'straight' },
+        fill: { opacity: 0.3 },
+        yaxis: { min: 0 },
+        colors: ['#DCE6EC'],
+      };
+
+      function renderSparkline(selector, options) {
+        const el = document.querySelector(selector);
+        if (el) {
+          const chart = new window.ApexCharts(el, options);
+          chart.render();
+        }
+      }
+
+      renderSparkline('#sparkline-1', option_sparkline1);
+      renderSparkline('#sparkline-2', option_sparkline2);
+      renderSparkline('#sparkline-3', option_sparkline3);
+    } catch (e) {
+      console.debug('Sparklines skipped:', e.message);
+    }
+  })();
+});
 </script>
+<!--end::Global initializers (GUARDED)-->

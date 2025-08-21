@@ -15,13 +15,13 @@ class DashboardController extends Controller
             return view('admin.dashboard', $data);
         }
         elseif(Auth::user()->role =='teacher') {
-            return view('admin.teacher.dashboard', $data);
+            return view('teacher.dashboard', $data);
         }
         elseif(Auth::user()->role =='student') {
-            return view('admin.student.dashboard', $data);
+            return view('student.dashboard', $data);
         }
         elseif(Auth::user()->role =='parent') {
-            return view('admin.parent.dashboard', $data);
+            return view('parent.dashboard', $data);
         }
     }
 }

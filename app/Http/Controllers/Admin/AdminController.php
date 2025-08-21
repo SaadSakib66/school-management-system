@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\User;
+use App\Models\ClassModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
@@ -28,56 +29,82 @@ class AdminController extends Controller
         return view('admin.login');
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
-    {
-        //
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(Admin $admin)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Admin $admin)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Admin $admin)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Admin $admin)
-    {
-        //
-    }
-
     public function list()
     {
+        $data['getRecord'] = User::getAdmin();
         $data['header_title'] = 'Admin List';
         return view('admin.admin.list', $data);
     }
+
     public function add()
     {
         $data['header_title'] = 'Admin Add';
         return view('admin.admin.add', $data);
     }
+
+    public function addAdmin(Request $request)
+    {
+        // dd($request->all());
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|min:6',
+            'role' => 'required|in:admin,teacher,student,parent',
+        ]);
+
+        $user = new User();
+        $user->name = $request->name;
+        $user->email = $request->email;
+        $user->password = Hash::make($request->password);
+        $user->role = $request->role;
+        $user->save();
+
+        return redirect()->route('admin.admin.list')->with('success', 'Admin added successfully');
+    }
+
+    public function editAdmin($id)
+    {
+        $user = User::findOrFail($id);
+        $data['user'] = $user;
+        $data['header_title'] = 'Edit Admin';
+        return view('admin.admin.add', $data); // reuse the same form
+    }
+
+    public function updateAdmin(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email,' . $id,
+            'role' => 'required|in:admin,teacher,student,parent',
+        ]);
+
+        $user->name = $request->name;
+        $user->email = $request->email;
+        $user->role = $request->role;
+
+        // Only update password if provided
+        if (!empty($request->password)) {
+            $request->validate([
+                'password' => 'min:6'
+            ]);
+            $user->password = Hash::make($request->password);
+        }
+
+        $user->save();
+
+        return redirect()->route('admin.admin.list')->with('success', 'Admin updated successfully');
+    }
+
+    public function deleteAdmin(Request $request)
+    {
+        $user = User::findOrFail($request->id);
+        $user->delete();
+
+        return redirect()->route('admin.admin.list')->with('success', 'Admin deleted successfully');
+    }
+
 
     public function loginPage()
     {
