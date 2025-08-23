@@ -149,7 +149,7 @@
                         </li>
 
                         <li class="nav-item">
-                            <a href=""
+                            <a href="{{ route('admin.marks-register.list') }}"
                             class="nav-link @if(Request::segment(2) == 'marks_register') active @endif">
                                 <i class="bi bi-circle nav-icon"></i>
                                 <p>Marks Register</p>

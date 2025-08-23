@@ -15,6 +15,7 @@ use App\Http\Controllers\ClassTimetableController;
 use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamScheduleController;
 use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\MarksRegisterController;
 
 /*
 |--------------------------------------------------------------------------
@@ -153,6 +154,10 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
 
     //(Optional) reuse your existing AJAX route for subjects if you want dynamic loads
     Route::get('exam_schedule/subjects/{class}', [ClassTimetableController::class,'subjectsForClass'])->name('admin.exam-schedule.subjects');
+
+    // Marks Register
+    Route::get('marks_register/list', [MarksRegisterController::class, 'list'])->name('admin.marks-register.list');
+    Route::post('marks_register/save', [MarksRegisterController::class, 'save'])->name('admin.marks-register.save');
 
 
 });
