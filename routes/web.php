@@ -16,6 +16,7 @@ use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamScheduleController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\MarksRegisterController;
+use App\Http\Controllers\MarksGradeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -159,6 +160,14 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
     Route::get('marks_register/list', [MarksRegisterController::class, 'list'])->name('admin.marks-register.list');
     Route::post('marks_register/save', [MarksRegisterController::class, 'save'])->name('admin.marks-register.save');
 
+    // Marks Grade
+    Route::get('marks_grade/list', [MarksGradeController::class, 'list'])->name('admin.marks-grade.list');
+    Route::get('marks_grade/add', [MarksGradeController::class, 'add'])->name('admin.marks-grade.add');
+    Route::post('marks_grade/add-grade', [MarksGradeController::class, 'addGrade'])->name('admin.marks-grade.add-grade');
+    Route::get('marks_grade/edit/{id}', [MarksGradeController::class, 'editGrade'])->name('admin.marks-grade.edit-grade');
+    Route::post('marks_grade/update/{id}', [MarksGradeController::class, 'updateGrade'])->name('admin.marks-grade.update-grade');
+    Route::post('marks_grade/delete', [MarksGradeController::class, 'deleteGrade'])->name('admin.marks-grade.delete-grade');
+
 
 });
 
@@ -188,6 +197,10 @@ Route::prefix('teacher')->middleware(['auth', 'teacher'])->group(function () {
     Route::get('my_exam_timetable/exams/{class}', [ExamScheduleController::class, 'examsForClass'])
         ->name('teacher.my-exam-timetable.exams');
 
+    // Marks Register
+    Route::get('marks_register/list', [MarksRegisterController::class, 'teacherMarkRegisterList'])->name('teacher.marks-register.list');
+    Route::post('marks_register/save', [MarksRegisterController::class, 'teacherMarkRegisterSave'])->name('teacher.marks-register.save');
+
 });
 
 /*
@@ -212,6 +225,10 @@ Route::prefix('student')->middleware(['auth', 'student'])->group(function () {
     // My Exam Calendar
     Route::get('my_exam_calendar', [CalendarController::class, 'myExamCalendar'])->name('student.my-exam-calendar');
 
+    // Marks Register
+    Route::get('marks_register/list', [MarksRegisterController::class, 'studentMarkRegisterList'])->name('student.marks-register.list');
+
+
 });
 
 /*
@@ -235,4 +252,8 @@ Route::prefix('parent')->middleware(['auth', 'parent'])->group(function () {
     // AJAX: exams available for a given student (based on the student's class, only active subjects)
     Route::get('my_exam_timetable/exams/{student}', [ExamScheduleController::class, 'examsForStudent'])
         ->name('parent.my-exam-timetable.exams');
+
+    // Marks Register
+    Route::get('marks_register/list', [MarksRegisterController::class, 'parentMarkRegisterList'])->name('parent.marks-register.list');
+
 });

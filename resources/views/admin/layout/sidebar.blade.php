@@ -157,7 +157,7 @@
                         </li>
 
                         <li class="nav-item">
-                            <a href="{{ route('admin.assign-class-teacher.list') }}"
+                            <a href="{{ route('admin.marks-grade.list') }}"
                             class="nav-link @if(Request::segment(2) == 'marks_grade') active @endif">
                                 <i class="bi bi-circle nav-icon"></i>
                                 <p>Marks Grade</p>
@@ -222,6 +222,15 @@
                 </li>
 
                 <li class="nav-item">
+                    <a href="{{ route('teacher.marks-register.list') }}" class="nav-link @if(Request::segment(2) == 'marks_register') active @endif">
+                        <i class="nav-icon bi bi-speedometer"></i>
+                        <p>
+                            Mark Register
+                        </p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
                     <a href="{{ route('teacher.account') }}" class="nav-link @if(Request::segment(2) == 'account') active @endif">
                         <i class="nav-icon bi bi-person"></i>
                         <p>My Account (Profile)</p>
@@ -254,6 +263,14 @@
                         class="nav-link {{ request()->routeIs('student.my-exam-calendar') ? 'active' : '' }}">
                         <i class="nav-icon bi bi-calendar2-check"></i>
                         <p>My Exam Calendar</p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('student.marks-register.list') }}"
+                        class="nav-link {{ request()->routeIs('student.marks-register.list') ? 'active' : '' }}">
+                        <i class="nav-icon bi bi-calendar2-check"></i>
+                        <p>My Exam Result</p>
                     </a>
                 </li>
 
@@ -307,6 +324,14 @@
                         class="nav-link @if(Request::segment(2) == 'my_exam_timetable') active @endif">
                         <i class="nav-icon bi bi-speedometer"></i>
                         <p>Child Exam Schedule</p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('parent.marks-register.list') }}"
+                        class="nav-link @if(Request::segment(2) == 'marks_register') active @endif">
+                        <i class="nav-icon bi bi-speedometer"></i>
+                        <p>My Child's Exam Result </p>
                     </a>
                 </li>
 

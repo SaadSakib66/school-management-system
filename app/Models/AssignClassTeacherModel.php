@@ -119,8 +119,8 @@ class AssignClassTeacherModel extends Model
             ->join('users as stu', function ($j) {
                 $j->on('stu.class_id', '=', 'assign_class_teacher.class_id')
                 ->where('stu.role', 'student')
-                ->whereNull('stu.deleted_at');
-                // ->where('stu.status', 1); // uncomment if you only want active students
+                ->whereNull('stu.deleted_at')
+                ->where('stu.status', 1); // uncomment if you only want active students
             })
             ->where('assign_class_teacher.teacher_id', $teacher_id)
             ->where('assign_class_teacher.status', 1)
