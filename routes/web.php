@@ -17,6 +17,7 @@ use App\Http\Controllers\ExamScheduleController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\MarksRegisterController;
 use App\Http\Controllers\MarksGradeController;
+use App\Http\Controllers\AttendanceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -168,6 +169,10 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
     Route::post('marks_grade/update/{id}', [MarksGradeController::class, 'updateGrade'])->name('admin.marks-grade.update-grade');
     Route::post('marks_grade/delete', [MarksGradeController::class, 'deleteGrade'])->name('admin.marks-grade.delete-grade');
 
+    // Attendance
+    Route::get('student_attendance', [AttendanceController::class, 'studentAttendance'])->name('admin.student-attendance.view');
+    Route::post('student_attendance/save',  [AttendanceController::class, 'saveStudentAttendance'])->name('admin.student-attendance.save');
+
 
 });
 
@@ -201,6 +206,10 @@ Route::prefix('teacher')->middleware(['auth', 'teacher'])->group(function () {
     Route::get('marks_register/list', [MarksRegisterController::class, 'teacherMarkRegisterList'])->name('teacher.marks-register.list');
     Route::post('marks_register/save', [MarksRegisterController::class, 'teacherMarkRegisterSave'])->name('teacher.marks-register.save');
 
+    // Attendance
+    Route::get('student_attendance',       [AttendanceController::class, 'teacherAttendance'])->name('teacher.student-attendance.view');
+    Route::post('student_attendance/save', [AttendanceController::class, 'teacherAttendanceSave'])->name('teacher.student-attendance.save');
+
 });
 
 /*
@@ -227,6 +236,9 @@ Route::prefix('student')->middleware(['auth', 'student'])->group(function () {
 
     // Marks Register
     Route::get('marks_register/list', [MarksRegisterController::class, 'studentMarkRegisterList'])->name('student.marks-register.list');
+
+    //Attendance
+    Route::get('attendance', [AttendanceController::class, 'studentMonthlyAttendance'])->name('student.attendance.month');
 
 
 });
@@ -255,5 +267,8 @@ Route::prefix('parent')->middleware(['auth', 'parent'])->group(function () {
 
     // Marks Register
     Route::get('marks_register/list', [MarksRegisterController::class, 'parentMarkRegisterList'])->name('parent.marks-register.list');
+
+    //Attendance
+    Route::get('attendance', [AttendanceController::class, 'parentMonthlyAttendance'])->name('parent.attendance.month');
 
 });

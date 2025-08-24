@@ -167,6 +167,34 @@
                     </ul>
                 </li>
 
+                <li class="nav-item {{ in_array(Request::segment(2), ['student_attendance','attendance_report']) ? 'menu-open' : '' }}">
+                    <a href="#" class="nav-link {{ in_array(Request::segment(2), ['student_attendance','attendance_report']) ? 'active' : '' }}">
+                        <i class="nav-icon bi bi-clipboard-fill"></i>
+                        <p>
+                            Attendance
+                            <i class="nav-arrow bi bi-chevron-right"></i>
+                        </p>
+                    </a>
+                    <ul class="nav nav-treeview">
+
+                        <li class="nav-item">
+                            <a href="{{ route('admin.student-attendance.view') }}"
+                            class="nav-link @if(Request::segment(2) == 'student_attendance') active @endif">
+                                <i class="bi bi-circle nav-icon"></i>
+                                <p>Student Attendance</p>
+                            </a>
+                        </li>
+
+                        <li class="nav-item">
+                            <a href="#"
+                            class="nav-link @if(Request::segment(2) == 'attendance_report') active @endif">
+                                <i class="bi bi-circle nav-icon"></i>
+                                <p>Attendance Report</p>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+
                 <li class="nav-item">
                     <a href="{{ route('admin.account') }}" class="nav-link @if(Request::segment(2) == 'account') active @endif">
                         <i class="nav-icon bi bi-person"></i>
@@ -221,6 +249,34 @@
                     </a>
                 </li>
 
+                <li class="nav-item {{ in_array(Request::segment(2), ['student_attendance','attendance_report']) ? 'menu-open' : '' }}">
+                    <a href="#" class="nav-link {{ in_array(Request::segment(2), ['student_attendance','attendance_report']) ? 'active' : '' }}">
+                        <i class="nav-icon bi bi-clipboard-fill"></i>
+                        <p>
+                            Attendance
+                            <i class="nav-arrow bi bi-chevron-right"></i>
+                        </p>
+                    </a>
+                    <ul class="nav nav-treeview">
+
+                        <li class="nav-item">
+                            <a href="{{ route('teacher.student-attendance.view') }}"
+                            class="nav-link @if(Request::segment(2) == 'student_attendance') active @endif">
+                                <i class="bi bi-circle nav-icon"></i>
+                                <p>Student Attendance</p>
+                            </a>
+                        </li>
+
+                        <li class="nav-item">
+                            <a href="#"
+                            class="nav-link @if(Request::segment(2) == 'attendance_report') active @endif">
+                                <i class="bi bi-circle nav-icon"></i>
+                                <p>Attendance Report</p>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+
                 <li class="nav-item">
                     <a href="{{ route('teacher.marks-register.list') }}" class="nav-link @if(Request::segment(2) == 'marks_register') active @endif">
                         <i class="nav-icon bi bi-speedometer"></i>
@@ -255,6 +311,14 @@
                         <p>
                             My Calendar
                         </p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('student.attendance.month') }}"
+                    class="nav-link @if(Request::segment(2) == 'student_attendance') active @endif">
+                        <i class="bi bi-circle nav-icon"></i>
+                        <p>My Attendance</p>
                     </a>
                 </li>
 
@@ -316,6 +380,14 @@
                         <p>
                             My Child's Class Timetable
                         </p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('parent.attendance.month') }}"
+                    class="nav-link @if(Request::segment(2) == 'student_attendance') active @endif">
+                        <i class="bi bi-circle nav-icon"></i>
+                        <p>My Child's Attendance</p>
                     </a>
                 </li>
 
