@@ -173,6 +173,9 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
     Route::get('student_attendance', [AttendanceController::class, 'studentAttendance'])->name('admin.student-attendance.view');
     Route::post('student_attendance/save',  [AttendanceController::class, 'saveStudentAttendance'])->name('admin.student-attendance.save');
 
+    // Attendance Report (Admin)
+    Route::get('attendance_report', [AttendanceController::class, 'attendanceReport'])->name('admin.attendance-report.view');
+
 
 });
 
@@ -209,6 +212,9 @@ Route::prefix('teacher')->middleware(['auth', 'teacher'])->group(function () {
     // Attendance
     Route::get('student_attendance',       [AttendanceController::class, 'teacherAttendance'])->name('teacher.student-attendance.view');
     Route::post('student_attendance/save', [AttendanceController::class, 'teacherAttendanceSave'])->name('teacher.student-attendance.save');
+
+    // Teacher → Attendance Report (view only)
+    Route::get('teacher/attendance_report', [AttendanceController::class, 'teacherAttendanceReport'])->name('teacher.attendance-report.view');
 
 });
 

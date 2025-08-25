@@ -391,6 +391,96 @@ class AttendanceController extends Controller
     }
 
 
+    public function attendanceReport(Request $request)
+    {
+        $data['header_title'] = 'Attendance Report';
+
+        // Classes dropdown
+        $data['classes'] = ClassModel::orderBy('name')->get(['id','name']);
+
+        // Filters
+        $data['today']           = Carbon::today()->format('Y-m-d');
+        $data['selectedClassId'] = $request->integer('class_id') ?: null;
+        $data['selectedDate']    = $request->get('attendance_date') ?: null; // expects Y-m-d from <input type="date">
+        $data['selectedType']    = $request->get('attendance_type');         // '', '1'..'4'
+
+        $typeMap = Attendance::typeMap();
+
+        $records = null;
+
+        if ($data['selectedClassId'] && $data['selectedDate']) {
+            $q = Attendance::with([
+                    'student:id,name,last_name,roll_number',
+                    'creator:id,name,last_name',
+                ])
+                ->where('class_id', $data['selectedClassId'])
+                ->whereDate('attendance_date', $data['selectedDate']);
+
+            if (in_array((int)$data['selectedType'], [1,2,3,4], true)) {
+                $q->where('attendance_type', (int)$data['selectedType']);
+            }
+
+            $records = $q->orderBy('student_id')
+                        ->paginate(25)
+                        ->appends($request->except('page'));
+        }
+
+        return view('admin.attendance.report', $data + [
+            'records' => $records,
+            'typeMap' => $typeMap,
+        ]);
+    }
+
+    public function teacherAttendanceReport(Request $request)
+    {
+        $teacher = Auth::user();
+        abort_unless($teacher && $teacher->role === 'teacher', 403);
+
+        $data['header_title'] = 'Attendance Report';
+
+        // Only ACTIVE classes assigned to this teacher
+        // (uses your model helper that already filters status=1 and not soft-deleted)
+        $classes = AssignClassTeacherModel::getTeacherClasses($teacher->id); // -> id, name
+        $data['classes'] = $classes;
+
+        // Filters
+        $data['today']           = Carbon::today()->format('Y-m-d');
+        $data['selectedClassId'] = $request->integer('class_id') ?: null;
+        $data['selectedDate']    = $request->get('attendance_date') ?: null; // Y-m-d from input[type=date]
+        $data['selectedType']    = $request->get('attendance_type');         // '', '1'..'4'
+
+        // Ensure teacher can only query their own classes
+        if ($data['selectedClassId'] && !$classes->pluck('id')->contains($data['selectedClassId'])) {
+            abort(403, 'You are not assigned to this class.');
+        }
+
+        $typeMap = Attendance::typeMap();
+        $records = null;
+
+        if ($data['selectedClassId'] && $data['selectedDate']) {
+            $q = Attendance::with([
+                    'student:id,name,last_name,roll_number',
+                    'creator:id,name,last_name',
+                ])
+                ->where('class_id', $data['selectedClassId'])
+                ->whereDate('attendance_date', $data['selectedDate']);
+
+            if (in_array((int) $data['selectedType'], [1,2,3,4], true)) {
+                $q->where('attendance_type', (int) $data['selectedType']);
+            }
+
+            $records = $q->orderBy('student_id')
+                        ->paginate(25)
+                        ->appends($request->except('page'));
+        }
+
+        return view('teacher.attendance_report', $data + [
+            'records' => $records,
+            'typeMap' => $typeMap,
+        ]);
+    }
+
+
 
 
 

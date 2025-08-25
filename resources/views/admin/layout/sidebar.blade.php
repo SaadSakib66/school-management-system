@@ -186,7 +186,7 @@
                         </li>
 
                         <li class="nav-item">
-                            <a href="#"
+                            <a href="{{ route('admin.attendance-report.view') }}"
                             class="nav-link @if(Request::segment(2) == 'attendance_report') active @endif">
                                 <i class="bi bi-circle nav-icon"></i>
                                 <p>Attendance Report</p>
@@ -268,7 +268,7 @@
                         </li>
 
                         <li class="nav-item">
-                            <a href="#"
+                            <a href="{{ route('teacher.attendance-report.view') }}"
                             class="nav-link @if(Request::segment(2) == 'attendance_report') active @endif">
                                 <i class="bi bi-circle nav-icon"></i>
                                 <p>Attendance Report</p>

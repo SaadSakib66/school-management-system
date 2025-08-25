@@ -62,13 +62,13 @@
                 <table class="table table-striped mb-0">
                   <thead>
                     <tr>
-                      <th style="width:25%">Subject</th>
-                      <th style="width:18%">Date</th>
+                      <th style="width:10%">Subject</th>
+                      <th style="width:10%">Date</th>
                       <th style="width:15%">Start</th>
                       <th style="width:15%">End</th>
                       <th style="width:15%">Room</th>
-                      <th style="width:6%">Full</th>
-                      <th style="width:6%">Pass</th>
+                      <th style="width:20%">Full Marks</th>
+                      <th style="width:20%">Pass Marks</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -34,4 +34,14 @@ class Attendance extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    public static function typeMap(): array
+    {
+        return [
+            1 => 'Present',
+            2 => 'Late',
+            3 => 'Half Day',
+            4 => 'Absent',
+        ];
+    }
 }
