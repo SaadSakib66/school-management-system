@@ -195,6 +195,36 @@
                     </ul>
                 </li>
 
+
+                <li class="nav-item {{ in_array(Request::segment(2), ['notice_board','send_email']) ? 'menu-open' : '' }}">
+                    <a href="#" class="nav-link {{ in_array(Request::segment(2), ['notice_board','send_email']) ? 'active' : '' }}">
+                        <i class="nav-icon bi bi-clipboard-fill"></i>
+                        <p>
+                            Communicate
+                            <i class="nav-arrow bi bi-chevron-right"></i>
+                        </p>
+                    </a>
+                    <ul class="nav nav-treeview">
+
+                        <li class="nav-item">
+                            <a href="{{ route('admin.notice-board.list') }}"
+                            class="nav-link @if(Request::segment(2) == 'notice_board') active @endif">
+                                <i class="bi bi-circle nav-icon"></i>
+                                <p>Notice Board</p>
+                            </a>
+                        </li>
+
+                        <li class="nav-item">
+                            <a href="{{ route('admin.email.form') }}"
+                                class="nav-link {{ request()->routeIs('admin.email.*') ? 'active' : '' }}">
+                                <i class="bi bi-envelope nav-icon"></i>
+                                <p>Send Email</p>
+                            </a>
+                        </li>
+
+                    </ul>
+                </li>
+
                 <li class="nav-item">
                     <a href="{{ route('admin.account') }}" class="nav-link @if(Request::segment(2) == 'account') active @endif">
                         <i class="nav-icon bi bi-person"></i>
@@ -287,6 +317,22 @@
                 </li>
 
                 <li class="nav-item">
+                    <a href="{{ route('teacher.notice-board') }}"
+                    class="nav-link @if(Request::segment(2) == 'my_notice_board') active @endif">
+                        <i class="bi bi-circle nav-icon"></i>
+                        <p>Notice Board</p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('teacher.inbox') }}"
+                        class="nav-link {{ request()->routeIs('teacher.inbox*') ? 'active' : '' }}">
+                        <i class="bi bi-inbox nav-icon"></i>
+                        <p>My Emails</p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
                     <a href="{{ route('teacher.account') }}" class="nav-link @if(Request::segment(2) == 'account') active @endif">
                         <i class="nav-icon bi bi-person"></i>
                         <p>My Account (Profile)</p>
@@ -356,6 +402,22 @@
                 </li>
 
                 <li class="nav-item">
+                    <a href="{{ route('student.notice-board') }}"
+                    class="nav-link @if(Request::segment(2) == 'my_notice_board') active @endif">
+                        <i class="bi bi-circle nav-icon"></i>
+                        <p>Notice Board</p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('student.inbox') }}"
+                        class="nav-link {{ request()->routeIs('student.inbox*') ? 'active' : '' }}">
+                        <i class="bi bi-inbox nav-icon"></i>
+                        <p>My Emails</p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
                     <a href="{{ route('student.account') }}" class="nav-link @if(Request::segment(2) == 'account') active @endif">
                         <i class="nav-icon bi bi-person"></i>
                         <p>My Account (Profile)</p>
@@ -404,6 +466,22 @@
                         class="nav-link @if(Request::segment(2) == 'marks_register') active @endif">
                         <i class="nav-icon bi bi-speedometer"></i>
                         <p>My Child's Exam Result </p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('parent.notice-board') }}"
+                    class="nav-link @if(Request::segment(2) == 'my_notice_board') active @endif">
+                        <i class="bi bi-circle nav-icon"></i>
+                        <p>Notice Board</p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('parent.inbox') }}"
+                        class="nav-link {{ request()->routeIs('parent.inbox*') ? 'active' : '' }}">
+                        <i class="bi bi-inbox nav-icon"></i>
+                        <p>My Emails</p>
                     </a>
                 </li>
 

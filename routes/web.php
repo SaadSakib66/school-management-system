@@ -18,6 +18,7 @@ use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\MarksRegisterController;
 use App\Http\Controllers\MarksGradeController;
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\CommunicateController;
 
 /*
 |--------------------------------------------------------------------------
@@ -176,6 +177,20 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
     // Attendance Report (Admin)
     Route::get('attendance_report', [AttendanceController::class, 'attendanceReport'])->name('admin.attendance-report.view');
 
+    // Communicate (Notice Board, Send Email)
+    Route::get('notice_board', [CommunicateController::class, 'noticeBoardList'])->name('admin.notice-board.list');
+    Route::get('notice_board/add', [CommunicateController::class, 'AddNoticeBoard'])->name('admin.notice-board.add');
+    Route::get('notice_board/edit/{id}', [CommunicateController::class, 'EditNoticeBoard'])->name('admin.notice-board.edit');
+    Route::put('notice_board/update/{id}', [CommunicateController::class, 'UpdateNoticeBoard'])->name('admin.notice-board.update');
+    Route::post('notice_board/store', [CommunicateController::class, 'StoreNoticeBoard'])->name('admin.notice-board.store');
+    Route::delete('notice_board/{id}', [CommunicateController::class, 'DestroyNoticeBoard'])->name('admin.notice-board.destroy');
+
+    // Send Email (form, search recipients, send)
+    Route::get('send-email', [CommunicateController::class, 'emailForm'])->name('admin.email.form');
+    Route::get('send-email/recipients', [CommunicateController::class, 'searchRecipients'])->name('admin.email.recipients'); // <= inside group
+    Route::post('send-email', [CommunicateController::class, 'emailSend'])->name('admin.email.send');
+    Route::get('email-logs', [CommunicateController::class, 'emailLogs'])->name('admin.email.logs');
+
 
 });
 
@@ -216,6 +231,13 @@ Route::prefix('teacher')->middleware(['auth', 'teacher'])->group(function () {
     // Teacher → Attendance Report (view only)
     Route::get('teacher/attendance_report', [AttendanceController::class, 'teacherAttendanceReport'])->name('teacher.attendance-report.view');
 
+    // Notice Board
+    Route::get('my_notice_board', [CommunicateController::class,'teacherNotices'])->name('teacher.notice-board');
+
+    // My Email
+    Route::get('inbox', [CommunicateController::class,'teacherInbox'])->name('teacher.inbox');
+    Route::get('inbox/{log}', [CommunicateController::class,'showInboxItem'])->name('teacher.inbox.show');
+
 });
 
 /*
@@ -245,6 +267,13 @@ Route::prefix('student')->middleware(['auth', 'student'])->group(function () {
 
     //Attendance
     Route::get('attendance', [AttendanceController::class, 'studentMonthlyAttendance'])->name('student.attendance.month');
+
+    // Notice Board
+    Route::get('my_notice_board', [CommunicateController::class,'studentNotices'])->name('student.notice-board');
+
+    // My Email
+    Route::get('inbox', [CommunicateController::class,'studentInbox'])->name('student.inbox');
+    Route::get('inbox/{log}', [CommunicateController::class,'showInboxItem'])->name('student.inbox.show');
 
 
 });
@@ -276,5 +305,12 @@ Route::prefix('parent')->middleware(['auth', 'parent'])->group(function () {
 
     //Attendance
     Route::get('attendance', [AttendanceController::class, 'parentMonthlyAttendance'])->name('parent.attendance.month');
+
+    // Notice Board
+    Route::get('my_notice_board', [CommunicateController::class,'parentNotices'])->name('parent.notice-board');
+
+    // My Email
+    Route::get('inbox', [CommunicateController::class,'parentInbox'])->name('parent.inbox');
+    Route::get('inbox/{log}', [CommunicateController::class,'showInboxItem'])->name('parent.inbox.show');
 
 });

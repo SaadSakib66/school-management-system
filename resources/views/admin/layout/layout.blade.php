@@ -44,8 +44,10 @@
         <!--end::App Wrapper-->
         <!--begin::Script-->
         <!--begin::Third Party Plugin(OverlayScrollbars)-->
-        @stack('scripts')
+        <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
         @include('admin.layout.scripts')
+        @stack('scripts')
 
         <!--end::Script-->
     </body>
