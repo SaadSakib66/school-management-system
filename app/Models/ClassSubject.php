@@ -62,5 +62,6 @@ class ClassSubject extends Model
             ->orderBy('subjects.name')
             ->get();
     }
+    
 
 }

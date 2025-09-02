@@ -225,6 +225,35 @@
                     </ul>
                 </li>
 
+                <li class="nav-item {{ in_array(Request::segment(2), ['homework','homework_report']) ? 'menu-open' : '' }}">
+                    <a href="#" class="nav-link {{ in_array(Request::segment(2), ['homework','homework_report']) ? 'active' : '' }}">
+                        <i class="nav-icon bi bi-clipboard-fill"></i>
+                        <p>
+                            Homework
+                            <i class="nav-arrow bi bi-chevron-right"></i>
+                        </p>
+                    </a>
+                    <ul class="nav nav-treeview">
+
+                        <li class="nav-item">
+                            <a href="{{ route('admin.homework.list') }}"
+                            class="nav-link @if(Request::segment(2) == 'homework') active @endif">
+                                <i class="bi bi-circle nav-icon"></i>
+                                <p>Homework</p>
+                            </a>
+                        </li>
+
+                        <li class="nav-item">
+                            <a href="{{ route('admin.email.form') }}"
+                                class="nav-link @if(Request::segment(2) == 'homework_report') active @endif">
+                                <i class="bi bi-envelope nav-icon"></i>
+                                <p>Homework Report</p>
+                            </a>
+                        </li>
+
+                    </ul>
+                </li>
+
                 <li class="nav-item">
                     <a href="{{ route('admin.account') }}" class="nav-link @if(Request::segment(2) == 'account') active @endif">
                         <i class="nav-icon bi bi-person"></i>
@@ -276,6 +305,14 @@
                         <p>
                             My Student
                         </p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('teacher.homework.list') }}"
+                        class="nav-link @if(request()->routeIs('teacher.homework.*')) active @endif">
+                        <i class="nav-icon bi bi-journal-text"></i>
+                        <p>Homework</p>
                     </a>
                 </li>
 
@@ -369,6 +406,22 @@
                 </li>
 
                 <li class="nav-item">
+                    <a href="{{ route('student.homework.list') }}"
+                        class="nav-link @if(request()->routeIs('student.homework.list') || request()->routeIs('student.homework.submit*')) active @endif">
+                        <i class="nav-icon bi bi-list-task"></i>
+                        <p>My Homework</p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('student.homework.submitted') }}"
+                        class="nav-link @if(request()->routeIs('student.homework.submitted')) active @endif">
+                        <i class="nav-icon bi bi-upload"></i>
+                        <p>Submitted Homework</p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
                     <a href="{{ route('student.my-exam-calendar') }}"
                         class="nav-link {{ request()->routeIs('student.my-exam-calendar') ? 'active' : '' }}">
                         <i class="nav-icon bi bi-calendar2-check"></i>
@@ -442,6 +495,14 @@
                         <p>
                             My Child's Class Timetable
                         </p>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="{{ route('parent.child.homework.list') }}"
+                        class="nav-link @if(request()->routeIs('parent.child.homework.*')) active @endif">
+                        <i class="nav-icon bi bi-people"></i>
+                        <p>My Child Homework</p>
                     </a>
                 </li>
 

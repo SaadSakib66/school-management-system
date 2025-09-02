@@ -23,27 +23,27 @@ class UsersTableSeeder extends Seeder
         ]);
 
         // Teacher user
-        User::create([
-            'name' => 'Teacher',
-            'email' => 'teacher@gmail.com',
-            'password' => Hash::make('12365478'),
-            'role' => 'teacher',
-        ]);
+        // User::create([
+        //     'name' => 'Teacher',
+        //     'email' => 'teacher@gmail.com',
+        //     'password' => Hash::make('12365478'),
+        //     'role' => 'teacher',
+        // ]);
 
         // Student user
-        User::create([
-            'name' => 'Student',
-            'email' => 'student@gmail.com',
-            'password' => Hash::make('12365478'),
-            'role' => 'student',
-        ]);
+        // User::create([
+        //     'name' => 'Student',
+        //     'email' => 'student@gmail.com',
+        //     'password' => Hash::make('12365478'),
+        //     'role' => 'student',
+        // ]);
 
         // Parent user
-        User::create([
-            'name' => 'Parent',
-            'email' => 'parent@gmail.com',
-            'password' => Hash::make('12365478'),
-            'role' => 'parent',
-        ]);
+        // User::create([
+        //     'name' => 'Parent',
+        //     'email' => 'parent@gmail.com',
+        //     'password' => Hash::make('12365478'),
+        //     'role' => 'parent',
+        // ]);
     }
 }

@@ -19,6 +19,7 @@ use App\Http\Controllers\MarksRegisterController;
 use App\Http\Controllers\MarksGradeController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\CommunicateController;
+use App\Http\Controllers\HomeworkController;
 
 /*
 |--------------------------------------------------------------------------
@@ -191,6 +192,33 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
     Route::post('send-email', [CommunicateController::class, 'emailSend'])->name('admin.email.send');
     Route::get('email-logs', [CommunicateController::class, 'emailLogs'])->name('admin.email.logs');
 
+    // Homework
+    Route::get('homework/list', [HomeworkController::class, 'homeworkList'])->name('admin.homework.list');
+
+    Route::get('homework/add', [HomeworkController::class, 'homeworkAdd'])->name('admin.homework.add');
+    Route::post('homework/store', [HomeworkController::class, 'homeworkStore'])->name('admin.homework.store');
+
+    Route::get('homework/{id}/edit', [HomeworkController::class, 'homeworkEdit'])->name('admin.homework.edit');
+    Route::put('homework/{id}/update', [HomeworkController::class, 'homeworkUpdate'])->name('admin.homework.update');
+
+    Route::delete('homework/{id}', [HomeworkController::class, 'homeworkDelete'])->name('admin.homework.delete');
+    Route::post('homework/{id}/restore', [HomeworkController::class, 'homeworkRestore'])->name('admin.homework.restore');
+    Route::delete('homework/{id}/force', [HomeworkController::class, 'homeworkForceDelete'])->name('admin.homework.force_delete');
+
+    Route::get('homework/{id}/download', [HomeworkController::class, 'homeworkDownload'])->name('admin.homework.download');
+
+    // AJAX for subjects by class
+    Route::get('homework/subjects-by-class', [HomeworkController::class, 'classSubjects'])->name('admin.homework.class_subjects');
+
+    // Submissions list for a homework
+    Route::get('homework/{homework}/submissions', [HomeworkController::class, 'adminHomeworkSubmissionsIndex'])
+        ->name('admin.homework.submissions.index');
+
+    // Download a student's submission attachment
+    Route::get('homework/submissions/{submission}/download', [HomeworkController::class, 'adminHomeworkSubmissionDownload'])
+        ->name('admin.homework.submissions.download');
+
+
 
 });
 
@@ -238,6 +266,28 @@ Route::prefix('teacher')->middleware(['auth', 'teacher'])->group(function () {
     Route::get('inbox', [CommunicateController::class,'teacherInbox'])->name('teacher.inbox');
     Route::get('inbox/{log}', [CommunicateController::class,'showInboxItem'])->name('teacher.inbox.show');
 
+    // Homework
+    Route::get('homework/list', [HomeworkController::class, 'teacherHomeworkList'])->name('teacher.homework.list');
+
+    Route::get('homework/add', [HomeworkController::class, 'teacherHomeworkAdd'])->name('teacher.homework.add');
+    Route::post('homework/store', [HomeworkController::class, 'teacherHomeworkStore'])->name('teacher.homework.store');
+
+    Route::get('homework/{id}/edit', [HomeworkController::class, 'teacherHomeworkEdit'])->name('teacher.homework.edit');
+    Route::put('homework/{id}/update', [HomeworkController::class, 'teacherHomeworkUpdate'])->name('teacher.homework.update');
+
+    Route::delete('homework/{id}', [HomeworkController::class, 'teacherHomeworkDelete'])->name('teacher.homework.delete');
+
+    Route::get('homework/{id}/download', [HomeworkController::class, 'teacherHomeworkDownload'])->name('teacher.homework.download');
+
+    // AJAX: subjects by class (restricted to teacher's classes)
+    Route::get('homework/subjects-by-class',[HomeworkController::class, 'teacherHomeworkClassSubjects'])->name('teacher.homework.class_subjects');
+
+    // Submissions list (for one homework)
+    Route::get('homework/{homework}/submissions', [HomeworkController::class, 'teacherHomeworkSubmissionsIndex'])->name('teacher.homework.submissions.index');
+
+// Download a student's submission attachment
+    Route::get('homework/submissions/{submission}/download', [HomeworkController::class, 'teacherHomeworkSubmissionDownload'])->name('teacher.homework.submissions.download');
+
 });
 
 /*
@@ -274,6 +324,16 @@ Route::prefix('student')->middleware(['auth', 'student'])->group(function () {
     // My Email
     Route::get('inbox', [CommunicateController::class,'studentInbox'])->name('student.inbox');
     Route::get('inbox/{log}', [CommunicateController::class,'showInboxItem'])->name('student.inbox.show');
+
+    // Sidebar #1: My Homework
+    Route::get('homework/list', [HomeworkController::class, 'studentHomeworkList'])->name('student.homework.list');
+    Route::get('homework/{homework}/submit', [HomeworkController::class, 'studentSubmitHomework'])->name('student.homework.submit');
+    Route::post('homework/{homework}/submit',[HomeworkController::class, 'studentSubmitHomeworkStore'])->name('student.homework.submit.store');
+    Route::get('homework/{homework}/download',[HomeworkController::class, 'studentHomeworkDownload'])->name('student.homework.download');
+
+    // Sidebar #2: Submitted Homework
+    Route::get('homework/submitted', [HomeworkController::class, 'studentSubmitHomeworkList'])->name('student.homework.submitted');
+    Route::get('homework/submission/{id}/download', [HomeworkController::class, 'studentSubmitHomeworkDownload'])->name('student.homework.submission.download');
 
 
 });
@@ -312,5 +372,15 @@ Route::prefix('parent')->middleware(['auth', 'parent'])->group(function () {
     // My Email
     Route::get('inbox', [CommunicateController::class,'parentInbox'])->name('parent.inbox');
     Route::get('inbox/{log}', [CommunicateController::class,'showInboxItem'])->name('parent.inbox.show');
+
+    // My Childs Homework
+    Route::get('child/homework',                [HomeworkController::class, 'parentChildHomeworkList'])->name('parent.child.homework.list');
+    Route::get('child/homework/{homework}/download', [HomeworkController::class, 'parentChildHomeworkDownload'])->name('parent.child.homework.download');
+
+    // NEW: view a child’s submission for a specific homework
+    Route::get('child/homework/{homework}/submission/{student}', [HomeworkController::class, 'parentChildSubmissionShow'])->name('parent.child.homework.submission.show');
+
+    // NEW: download the child’s submission attachment
+    Route::get('child/submissions/{submission}/download', [HomeworkController::class, 'parentChildSubmissionDownload'])->name('parent.child.submissions.download');
 
 });

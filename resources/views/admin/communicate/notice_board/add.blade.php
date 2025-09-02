@@ -1,4 +1,3 @@
-{{-- resources/views/admin/communicate/notice_board/add.blade.php --}}
 @extends('admin.layout.layout')
 
 @section('content')
