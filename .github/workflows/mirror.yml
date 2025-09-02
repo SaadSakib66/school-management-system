@@ -2,7 +2,8 @@ name: Mirror to barabd (token_barabd)
 
 on:
   push:
-    branches: ['**']        # কেবল main চাইলে: ['main']
+    branches: ['**']        # কেবল main চাইলে ['main']
+  workflow_dispatch: {}     # ম্যানুয়ালি চালাতে পারবেন
 
 concurrency:
   group: mirror-${{ github.ref }}
@@ -17,32 +18,49 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      # সব ব্রাঞ্চ/ট্যাগ টেনে নিই যেন প্রথম রানেই পুরো ইতিহাস পুশ হয়
       - name: Fetch all branches/tags
         run: |
           git remote set-branches --add origin '*'
           git fetch --all --tags --prune
 
-      - name: মিরর রিমোট কনফিগার (idempotent)
+      # আগে API দিয়ে টোকেনের অ্যাক্সেস সত্যি আছে কি না চেক
+      - name: Verify token can see target repo
         env:
-          MIRROR_TOKEN: ${{ secrets.token_barabd }}   # ← আপনার নতুন সিক্রেট নাম
+          MIRROR_TOKEN: ${{ secrets.token_barabd }}
+        run: |
+          set -e
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${MIRROR_TOKEN}" \
+            https://api.github.com/repos/barabd/school-management-system)
+          echo "GitHub API HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "❌ Token cannot access barabd/school-management-system (private)."
+            echo "➡️  Fix: regenerate Fine-grained (Contents: Read&Write, selected repo) or use Classic PAT with repo scope, then update secret token_barabd."
+            exit 1
+          fi
+
+      - name: Configure mirror remote (idempotent, no scary errors)
+        env:
+          MIRROR_TOKEN: ${{ secrets.token_barabd }}
         run: |
           set -e
           git config --global user.email "mirror-bot@users.noreply.github.com"
           git config --global user.name  "Mirror Bot"
-
           URL="https://x-access-token:${MIRROR_TOKEN}@github.com/barabd/school-management-system.git"
-          git remote set-url mirror "$URL" || git remote add mirror "$URL"
+          if git remote get-url mirror >/dev/null 2>&1; then
+            git remote set-url mirror "$URL"
+          else
+            git remote add mirror "$URL"
+          fi
           git remote -v
-          git ls-remote --heads mirror   # দ্রুত অথ টেস্ট
+          git ls-remote --heads mirror
 
-      # নিরাপদ মোড: টার্গেটে কিছু ডিলিট করে না
+      # নিরাপদ সিঙ্ক (কিছু ডিলিট করে না)
       - name: Push branches
         run: git push mirror --all
-
       - name: Push tags
         run: git push mirror --tags
 
-      # কড়া মিরর (সাবধান): টার্গেটকে একদম সোর্সের মতো বানাবে, ডিলিটসহ
+      # কড়া মিরর (সতর্কতা: ডিলিটসহ একদম হুবহু মিলিয়ে দেবে)
       # - name: Strict mirror
       #   run: git push --mirror mirror
