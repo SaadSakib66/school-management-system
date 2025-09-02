@@ -50,7 +50,7 @@
   <body class="login-page bg-body-secondary">
     <div class="login-box">
       <div class="login-logo">
-        <a href="#"><b>School Management System</a>
+        <a href="#"><b>Education Management System</a>
       </div>
       <!-- /.login-logo -->
       <div class="card">
@@ -58,7 +58,7 @@
           <p class="login-box-msg">Sign in</p>
 
           @include('admin.message')
-          
+
           <form action="{{ url('admin/login') }}" method="post">
             @csrf
             <div class="input-group mb-3">
