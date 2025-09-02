@@ -2,7 +2,7 @@ name: Mirror to barabd
 
 on:
   push:
-    branches: ['**']
+    branches: ['**']     # <-- mirror pushes from any branch (switch to ['main'] if you only want main)
   create:
     branches: ['**']
   delete:
@@ -19,11 +19,33 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Push all branches and tags to barabd
+          fetch-tags: true
+
+      # get all branches/tags from origin so we can push them on first run
+      - name: Fetch all branches/tags
         run: |
-          git remote add mirror https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com/barabd/school-management-system.git
-          # Safe sync (keeps target up-to-date without deleting)
-          git push mirror --all
-          git push mirror --tags
-          # If you ever want an exact mirror (includes deletions), use:
-          # git push --mirror mirror
+          git remote set-branches --add origin '*'
+          git fetch --all --tags --prune
+
+      - name: Configure mirror remote (idempotent)
+        env:
+          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+        run: |
+          set -e
+          git config --global user.email "mirror-bot@users.noreply.github.com"
+          git config --global user.name  "Mirror Bot"
+
+          URL="https://x-access-token:${MIRROR_TOKEN}@github.com/barabd/school-management-system.git"
+          git remote set-url mirror "$URL" || git remote add mirror "$URL"
+          git remote -v
+
+      # SAFE: keeps target updated, doesn't delete anything
+      - name: Push branches
+        run: git push mirror --all
+
+      - name: Push tags
+        run: git push mirror --tags
+
+      # STRICT (optional): exact mirror incl. deletions; uncomment instead of the two steps above
+      # - name: Strict mirror (dangerous—overwrites target)
+      #   run: git push --mirror mirror
