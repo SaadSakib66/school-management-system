@@ -1,0 +1,29 @@
+name: Mirror to barabd
+
+on:
+  push:
+    branches: ['**']
+  create:
+    branches: ['**']
+  delete:
+    branches: ['**']
+
+concurrency:
+  group: mirror-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push all branches and tags to barabd
+        run: |
+          git remote add mirror https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com/barabd/school-management-system.git
+          # Safe sync (keeps target up-to-date without deleting)
+          git push mirror --all
+          git push mirror --tags
+          # If you ever want an exact mirror (includes deletions), use:
+          # git push --mirror mirror
