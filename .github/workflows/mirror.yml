@@ -1,12 +1,8 @@
-name: Mirror to barabd
+name: Mirror to barabd (token_barabd)
 
 on:
   push:
-    branches: ['**']     # <-- mirror pushes from any branch (switch to ['main'] if you only want main)
-  create:
-    branches: ['**']
-  delete:
-    branches: ['**']
+    branches: ['**']        # কেবল main চাইলে: ['main']
 
 concurrency:
   group: mirror-${{ github.ref }}
@@ -21,15 +17,15 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      # get all branches/tags from origin so we can push them on first run
+      # সব ব্রাঞ্চ/ট্যাগ টেনে নিই যেন প্রথম রানেই পুরো ইতিহাস পুশ হয়
       - name: Fetch all branches/tags
         run: |
           git remote set-branches --add origin '*'
           git fetch --all --tags --prune
 
-      - name: Configure mirror remote (idempotent)
+      - name: মিরর রিমোট কনফিগার (idempotent)
         env:
-          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+          MIRROR_TOKEN: ${{ secrets.token_barabd }}   # ← আপনার নতুন সিক্রেট নাম
         run: |
           set -e
           git config --global user.email "mirror-bot@users.noreply.github.com"
@@ -38,14 +34,15 @@ jobs:
           URL="https://x-access-token:${MIRROR_TOKEN}@github.com/barabd/school-management-system.git"
           git remote set-url mirror "$URL" || git remote add mirror "$URL"
           git remote -v
+          git ls-remote --heads mirror   # দ্রুত অথ টেস্ট
 
-      # SAFE: keeps target updated, doesn't delete anything
+      # নিরাপদ মোড: টার্গেটে কিছু ডিলিট করে না
       - name: Push branches
         run: git push mirror --all
 
       - name: Push tags
         run: git push mirror --tags
 
-      # STRICT (optional): exact mirror incl. deletions; uncomment instead of the two steps above
-      # - name: Strict mirror (dangerous—overwrites target)
+      # কড়া মিরর (সাবধান): টার্গেটকে একদম সোর্সের মতো বানাবে, ডিলিটসহ
+      # - name: Strict mirror
       #   run: git push --mirror mirror
