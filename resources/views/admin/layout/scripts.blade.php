@@ -23,7 +23,7 @@
 <!--end::Required Plugin(Bootstrap 5)-->
 
 <!--begin::Required Plugin(AdminLTE)-->
-<script src="{{ asset('admin/js/adminlte.js') }}"></script>
+<script src="{{ asset('admin-assets/js/adminlte.js') }}"></script>
 <!--end::Required Plugin(AdminLTE)-->
 
 <!-- OPTIONAL LIBRARIES (kept global, usage below is guarded) -->

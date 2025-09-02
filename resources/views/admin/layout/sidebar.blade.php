@@ -11,7 +11,7 @@
         @endphp
 
         <a href="{{ $dashboardRoute }}" class="brand-link">
-            <img src="{{ asset('admin/images/AdminLTELogo.png') }}" alt="AdminLTE Logo" class="brand-image opacity-75 shadow"/>
+            <img src="{{ asset('admin-assets/images/AdminLTELogo.png') }}" alt="AdminLTE Logo" class="brand-image opacity-75 shadow"/>
             <span class="brand-text fw-light">Barabd School</span>
         </a>
 
