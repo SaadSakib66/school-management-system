@@ -2,8 +2,8 @@ name: Mirror to barabd (token_barabd)
 
 on:
   push:
-    branches: ['**']        # কেবল main চাইলে ['main']
-  workflow_dispatch: {}     # ম্যানুয়ালি চালাতে পারবেন
+    branches: ['**']      # শুধু main মিরর করতে চাইলে: ['main']
+  workflow_dispatch: {}   # চাইলে ম্যানুয়ালি রান করতে পারবেন
 
 concurrency:
   group: mirror-${{ github.ref }}
@@ -13,18 +13,20 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Fetch all branches/tags
+      # প্রথম রানে সব ব্রাঞ্চ/ট্যাগ এনে নিন
+      - name: সব ব্রাঞ্চ/ট্যাগ ফেচ
         run: |
           git remote set-branches --add origin '*'
           git fetch --all --tags --prune
 
-      # আগে API দিয়ে টোকেনের অ্যাক্সেস সত্যি আছে কি না চেক
-      - name: Verify token can see target repo
+      # টোকেন দিয়ে টার্গেট প্রাইভেট রেপো দেখা যায় কি না আগে যাচাই
+      - name: টোকেন ভেরিফাই (API)
         env:
           MIRROR_TOKEN: ${{ secrets.token_barabd }}
         run: |
@@ -33,34 +35,38 @@ jobs:
             -H "Authorization: Bearer ${MIRROR_TOKEN}" \
             https://api.github.com/repos/barabd/school-management-system)
           echo "GitHub API HTTP $code"
-          if [ "$code" != "200" ]; then
-            echo "❌ Token cannot access barabd/school-management-system (private)."
-            echo "➡️  Fix: regenerate Fine-grained (Contents: Read&Write, selected repo) or use Classic PAT with repo scope, then update secret token_barabd."
-            exit 1
-          fi
+          test "$code" = "200"
 
-      - name: Configure mirror remote (idempotent, no scary errors)
+      # মিরর রিমোট যোগ/আপডেট — Classic PAT-ফ্রেন্ডলি URL
+      - name: মিরর রিমোট কনফিগার (idempotent)
         env:
           MIRROR_TOKEN: ${{ secrets.token_barabd }}
         run: |
           set -e
           git config --global user.email "mirror-bot@users.noreply.github.com"
           git config --global user.name  "Mirror Bot"
-          URL="https://x-access-token:${MIRROR_TOKEN}@github.com/barabd/school-management-system.git"
+
+          # Classic PAT হলে এই ফরম্যাট সবচেয়ে নির্ভরযোগ্য:
+          #   https://<username>:<token>@github.com/<owner>/<repo>.git
+          URL="https://barabd:${MIRROR_TOKEN}@github.com/barabd/school-management-system.git"
+
           if git remote get-url mirror >/dev/null 2>&1; then
             git remote set-url mirror "$URL"
           else
             git remote add mirror "$URL"
           fi
-          git remote -v
-          git ls-remote --heads mirror
 
-      # নিরাপদ সিঙ্ক (কিছু ডিলিট করে না)
-      - name: Push branches
+          git remote -v
+          # খালি রেপো হলে আউটপুট ফাঁকা হতে পারে; ফেল করাবেন না
+          git ls-remote --heads mirror || true
+
+      # নিরাপদ সিঙ্ক — টার্গেটে কিছু ডিলিট করে না
+      - name: ব্রাঞ্চ পুশ
         run: git push mirror --all
-      - name: Push tags
+
+      - name: ট্যাগ পুশ
         run: git push mirror --tags
 
-      # কড়া মিরর (সতর্কতা: ডিলিটসহ একদম হুবহু মিলিয়ে দেবে)
-      # - name: Strict mirror
+      # একদম হুবহু মিরর (ডিলিটসহ) চাইলে উপরের দুই স্টেপের বদলে এটা ব্যবহার করুন:
+      # - name: Strict mirror (সতর্কতা)
       #   run: git push --mirror mirror
