@@ -1,0 +1,25 @@
+name: Mirror to barabd
+
+on: push
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set git identity
+        run: |
+          git config user.name "Mirror Bot"
+          git config user.email "mirror@example.com"
+
+      - name: Add mirror remote
+        env:
+          TOKEN: ${{ secrets.MIRROR_TOKEN }}
+        run: |
+          git remote add mirror https://$TOKEN@github.com/barabd/school-management-system.git
+          git push mirror --all
+          git push mirror --tags
