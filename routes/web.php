@@ -26,7 +26,8 @@ use App\Http\Controllers\HomeworkController;
 | Web Routes
 |--------------------------------------------------------------------------
 */
-
+// Public Welcome Route
+Route::redirect('/admin', '/admin/login')->name('admin.root');
 // Public Welcome Route
 Route::get('/', function () {
     return view('welcome');
