@@ -1,5 +1,4 @@
 name: Mirror to barabd
-
 on: push
 
 jobs:
@@ -11,15 +10,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set git identity
+      - name: Configure git
         run: |
           git config user.name "Mirror Bot"
           git config user.email "mirror@example.com"
 
-      - name: Add mirror remote
+      - name: Push to mirror (HTTPS with PAT)
         env:
           TOKEN: ${{ secrets.MIRROR_TOKEN }}
         run: |
-          git remote add mirror https://$TOKEN@github.com/barabd/school-management-system.git
+          set -euxo pipefail
+          git remote remove mirror || true
+          git remote add mirror https://barabd:${TOKEN}@github.com/barabd/school-management-system.git
+          # প্রথমবার সব ব্রাঞ্চ/ট্যাগ পাঠাই
           git push mirror --all
           git push mirror --tags
