@@ -244,7 +244,7 @@
                         </li>
 
                         <li class="nav-item">
-                            <a href="{{ route('admin.email.form') }}"
+                            <a href="{{ route('admin.homework.report') }}"
                                 class="nav-link @if(Request::segment(2) == 'homework_report') active @endif">
                                 <i class="bi bi-envelope nav-icon"></i>
                                 <p>Homework Report</p>

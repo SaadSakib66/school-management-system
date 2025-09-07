@@ -37,18 +37,6 @@ class HomeworkSubmission extends Model
         return $this->belongsTo(User::class, 'student_id');
     }
 
-    // public function getAttachmentUrlAttribute(): ?string
-    // {
-    //     if (!$this->attachment) return null;
-    //     try {
-    //         return Storage::disk('public')->url($this->attachment);
-    //     } catch (\Throwable $e) {
-    //         return Storage::disk('public')->exists($this->attachment)
-    //             ? asset('storage/'.$this->attachment)
-    //             : null;
-    //     }
-    // }
-
     public function getAttachmentUrlAttribute(): ?string
     {
         if (!$this->attachment) return null;

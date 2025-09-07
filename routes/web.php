@@ -20,6 +20,7 @@ use App\Http\Controllers\MarksGradeController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\CommunicateController;
 use App\Http\Controllers\HomeworkController;
+use App\Http\Controllers\HomeworkReportController;
 
 /*
 |--------------------------------------------------------------------------
@@ -216,8 +217,15 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
         ->name('admin.homework.submissions.index');
 
     // Download a student's submission attachment
-    Route::get('homework/submissions/{submission}/download', [HomeworkController::class, 'adminHomeworkSubmissionDownload'])
-        ->name('admin.homework.submissions.download');
+    Route::get('homework/submissions/{submission}/download', [HomeworkController::class, 'adminHomeworkSubmissionDownload'])->name('admin.homework.submissions.download');
+
+    // Homework Report (all submissions, with filters)
+    Route::get('homework_report', [HomeworkReportController::class, 'index'])->name('admin.homework.report');
+
+    // secure downloads
+    Route::get('homework_report/homework/{homework}/download', [HomeworkReportController::class, 'downloadHomework'])->name('admin.homework.report.download.homework');
+
+    Route::get('homework_report/submission/{submission}/download', [HomeworkReportController::class, 'downloadSubmission'])->name('admin.homework.report.download.submission');
 
 
 
