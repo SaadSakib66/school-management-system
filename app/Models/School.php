@@ -10,6 +10,17 @@ class School extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'name','short_name','email','phone','address','logo','status',
+        'name',
+        'short_name',
+        'email',
+        'phone',
+        'address',
+        'logo',
+        'status',
     ];
+
+    public function users()
+    {
+        return $this->hasMany(User::class, 'school_id');
+    }
 }

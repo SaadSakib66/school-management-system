@@ -10,6 +10,14 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
+
+/**
+ * @property int         $id
+ * @property string      $role
+ * @property int|null    $school_id
+ * @property-read \App\Models\School|null $school
+ */
+
 class User extends Authenticatable
 {
 
@@ -19,6 +27,7 @@ class User extends Authenticatable
     protected $table = 'users';
 
     protected $fillable = [
+        'school_id',
         'name',
         'last_name',
         'admission_number',
@@ -49,6 +58,11 @@ class User extends Authenticatable
         ->where('role', 'admin')
         ->orderBy('id', 'DESC')
         ->paginate(10);
+    }
+
+    public function school()
+    {
+        return $this->belongsTo(School::class, 'school_id');
     }
 
     public function class()

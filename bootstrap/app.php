@@ -13,6 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         //
         $middleware->alias([
+            'super_admin'  => \App\Http\Middleware\SuperAdminMiddleware::class,
+            'school.active' => \App\Http\Middleware\SchoolActiveMiddleware::class,
+            'admin_or_super_with_context' => \App\Http\Middleware\AdminOrSuperWithContextMiddleware::class,
             'auth' => \App\Http\Middleware\Authenticate::class,
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
             'teacher' => \App\Http\Middleware\TeacherMiddleware::class,
