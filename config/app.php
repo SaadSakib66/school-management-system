@@ -123,4 +123,6 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    'multi_school' => env('MULTI_SCHOOL', false),
+
 ];
