@@ -1,6 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+
+use App\Http\Controllers\SuperAdmin\GlobalDashboardController;
+use App\Http\Controllers\SuperAdmin\SchoolsController;
+use App\Http\Controllers\SuperAdmin\SchoolSwitchController;
+
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ClassController;
@@ -46,12 +51,28 @@ Route::prefix('admin')->group(function () {
     Route::get('forgot-password', [AdminController::class, 'forgotPassword'])->name('admin.forgotPassword');
 });
 
+Route::prefix('superadmin')->middleware(['auth','super_admin'])->group(function () {
+    Route::get('dashboard', [GlobalDashboardController::class, 'index'])->name('superadmin.dashboard');
+
+    Route::get('schools', [SchoolsController::class, 'index'])->name('superadmin.schools.index');
+    Route::get('schools/create', [SchoolsController::class, 'create'])->name('superadmin.schools.create');
+    Route::post('schools', [SchoolsController::class, 'store'])->name('superadmin.schools.store');
+    Route::get('schools/{school}/edit', [SchoolsController::class, 'edit'])->name('superadmin.schools.edit');
+    Route::put('schools/{school}', [SchoolsController::class, 'update'])->name('superadmin.schools.update');
+    Route::delete('schools/{school}', [SchoolsController::class, 'destroy'])->name('superadmin.schools.destroy');
+    Route::patch('schools/{school}/status', [SchoolsController::class, 'toggleStatus'])->name('superadmin.schools.toggle');
+
+    Route::get('schools/switch', [SchoolSwitchController::class, 'index'])->name('superadmin.schools.switch');
+    Route::post('schools/switch', [SchoolSwitchController::class, 'set'])->name('superadmin.schools.switch.set');
+    Route::post('schools/clear',  [SchoolSwitchController::class, 'clear'])->name('superadmin.schools.switch.clear');
+});
+
 /*
 |--------------------------------------------------------------------------
 | Admin Protected Routes (Requires 'auth' and 'admin' middleware)
 |--------------------------------------------------------------------------
 */
-Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
+Route::prefix('admin')->middleware(['auth','admin_or_super_with_context','school.active'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'dashboard'])->name('admin.dashboard');
     Route::get('list', [AdminController::class, 'list'])->name('admin.admin.list');
     Route::get('add', [AdminController::class, 'add'])->name('admin.admin.add');
@@ -236,7 +257,7 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
 | Teacher Protected Routes (Requires 'auth' and 'teacher' middleware)
 |--------------------------------------------------------------------------
 */
-Route::prefix('teacher')->middleware(['auth', 'teacher'])->group(function () {
+Route::prefix('teacher')->middleware(['auth','teacher','school.active'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'dashboard'])->name('teacher.dashboard');
     Route::get('account', [UserController::class, 'myAccount'])->name('teacher.account');
     Route::get('edit_account', [UserController::class, 'editMyAccount'])->name('teacher.edit-account');
@@ -294,7 +315,7 @@ Route::prefix('teacher')->middleware(['auth', 'teacher'])->group(function () {
     // Submissions list (for one homework)
     Route::get('homework/{homework}/submissions', [HomeworkController::class, 'teacherHomeworkSubmissionsIndex'])->name('teacher.homework.submissions.index');
 
-// Download a student's submission attachment
+    // Download a student's submission attachment
     Route::get('homework/submissions/{submission}/download', [HomeworkController::class, 'teacherHomeworkSubmissionDownload'])->name('teacher.homework.submissions.download');
 
 });
@@ -304,7 +325,7 @@ Route::prefix('teacher')->middleware(['auth', 'teacher'])->group(function () {
 | Student Protected Routes (Requires 'auth' and 'student' middleware)
 |--------------------------------------------------------------------------
 */
-Route::prefix('student')->middleware(['auth', 'student'])->group(function () {
+Route::prefix('student')->middleware(['auth', 'student', 'school.active'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'dashboard'])->name('student.dashboard');
     Route::get('account', [UserController::class, 'myAccount'])->name('student.account');
     Route::get('edit_account', [UserController::class, 'editMyAccount'])->name('student.edit-account');
@@ -352,7 +373,7 @@ Route::prefix('student')->middleware(['auth', 'student'])->group(function () {
 | Parent Protected Routes (Requires 'auth' and 'parent' middleware)
 |--------------------------------------------------------------------------
 */
-Route::prefix('parent')->middleware(['auth', 'parent'])->group(function () {
+Route::prefix('parent')->middleware(['auth', 'parent', 'school.active'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'dashboard'])->name('parent.dashboard');
     Route::get('account', [UserController::class, 'myAccount'])->name('parent.account');
     Route::get('edit_account', [UserController::class, 'editMyAccount'])->name('parent.edit-account');
