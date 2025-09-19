@@ -3,12 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Traits\BelongsToSchool;
 
 class EmailLog extends Model
 {
+    use BelongsToSchool;
+    
     protected $fillable = [
         'role','user_id','email','subject','body_html','body_text',
-        'status','error','sent_by','sent_at','is_read','read_at'
+        'status','error','sent_by','sent_at','is_read','read_at','school_id'
     ];
 
     protected $casts = [

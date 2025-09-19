@@ -6,13 +6,17 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Filesystem\FilesystemAdapter;
+use App\Models\Traits\BelongsToSchool;
 
 class Homework extends Model
 {
     use SoftDeletes;
+    use BelongsToSchool;
+
     protected $table = 'homeworks';
 
     protected $fillable = [
+        'school_id',
         'class_id',
         'subject_id',
         'homework_date',

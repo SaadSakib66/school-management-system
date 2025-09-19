@@ -8,76 +8,111 @@ use App\Models\ClassModel;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    /** Quick helper: only admin or super admin may toggle their own status */
+    private function canChangeOwnStatus(): bool
+    {
+        $u = Auth::user();
+        return $u && in_array($u->role, ['admin', 'super_admin'], true);
+    }
 
+    /**
+     * Show "My Account" for the logged-in user by role.
+     * - super_admin WITHOUT school context → superadmin.account
+     * - super_admin WITH school context   → admin.account (acting-as)
+     */
     public function myAccount()
     {
-        $data['getClass'] = ClassModel::getClass();
-        $data['header_title'] = 'My Profile';
-        $data['user'] = Auth::user();
+        $user = Auth::user();
+        $data['header_title']   = 'My Profile';
+        $data['user']           = $user;
+        $data['canChangeStatus']= $this->canChangeOwnStatus();   // ⬅ pass flag to view
+        $data['getClass']       = ClassModel::getClass();
 
-        if ($data['user']->role === 'teacher') {
-            return view('teacher.account', $data);
+        switch ($user->role) {
+            case 'teacher':
+                return view('teacher.account', $data);
 
-        } elseif ($data['user']->role === 'student') {
-            // Load class + subjects for the logged-in student
-            $data['user']->loadMissing('class.subjects');
-            return view('student.account', $data);
+            case 'student':
+                $data['user']->loadMissing('class.subjects');
+                return view('student.account', $data);
 
-        } elseif ($data['user']->role === 'parent') {
-            // eager-load class to avoid N+1
-            $data['assignedStudents'] = $data['user']->children()
-                ->with(['class' => function ($q)
-                {
-                    $q->with('subjects'); // nested eager-load
-                }])
-                ->paginate(10);
-                
-            return view('parent.account', $data);
+            case 'parent':
+                $data['assignedStudents'] = $data['user']->children()
+                    ->with(['class' => function ($q) { $q->with('subjects'); }])
+                    ->paginate(10);
+                return view('parent.account', $data);
 
-        } elseif ($data['user']->role === 'admin') {
-            return view('admin.account', $data);
+            case 'admin':
+                return view('admin.account', $data);
 
+            case 'super_admin':
+                if (session()->has('current_school_id')) {
+                    return view('admin.account', $data);
+                }
+                return view('superadmin.account', $data);
         }
 
         abort(403, 'Unauthorized action.');
     }
 
-
+    /**
+     * Show edit page for "My Account" by role.
+     * Mirrors myAccount() routing behavior.
+     */
     public function editMyAccount()
     {
-        $data['header_title'] = 'Edit Profile';
-        $data['user'] = Auth::user();
+        $user = Auth::user();
+        $data['header_title']   = 'Edit Profile';
+        $data['user']           = $user;
+        $data['canChangeStatus']= $this->canChangeOwnStatus();   // ⬅ pass flag to edit view
 
-        if ($data['user']->role === 'teacher') {
-            return view('teacher.edit', $data);
-        } elseif ($data['user']->role === 'student') {
-            return view('student.edit', $data);
-        } elseif ($data['user']->role === 'parent') {
-            return view('parent.edit', $data);
-        } elseif ($data['user']->role === 'admin') {
-            return view('admin.edit', $data);
+        switch ($user->role) {
+            case 'teacher':
+                return view('teacher.edit', $data);
+
+            case 'student':
+                return view('student.edit', $data);
+
+            case 'parent':
+                return view('parent.edit', $data);
+
+            case 'admin':
+                return view('admin.edit', $data);
+
+            case 'super_admin':
+                if (session()->has('current_school_id')) {
+                    return view('admin.edit', $data);
+                }
+                return view('superadmin.edit', $data);
         }
 
         abort(403, 'Unauthorized action.');
     }
 
-
+    /** ---------------- Teacher self-update (unchanged re: status) ---------------- */
     public function updateMyAccount(Request $request)
     {
-        $teacher = Auth::user(); // no $id needed
+        $teacher = Auth::user();
+        if ($teacher->role !== 'teacher') abort(403, 'Unauthorized.');
 
         $request->validate([
             'name'          => 'required|string|max:255',
             'last_name'     => 'required|string|max:255',
-            'email'         => 'required|email|unique:users,email,' . $teacher->id,
+            'email'         => [
+                'required','email',
+                Rule::unique('users', 'email')
+                    ->where(fn($q) => $q->where('school_id', $teacher->school_id))
+                    ->ignore($teacher->id),
+            ],
             'mobile_number' => 'required|min:11',
             'password'      => 'nullable|string|min:6',
             'address'       => 'nullable|string|max:255',
             'gender'        => 'required|in:male,female,other',
-            // (optional) ignore role/status for self-edit
+            // no 'status' here on purpose
         ]);
 
         $teacher->name          = trim($request->name);
@@ -99,13 +134,14 @@ class UserController extends Controller
         }
 
         $teacher->save();
-
         return redirect()->route('teacher.account')->with('success', 'Profile updated successfully.');
     }
 
+    /** ---------------- Student self-update (unchanged re: status) ---------------- */
     public function updateMyAccountStudent(Request $request)
     {
         $student = Auth::user();
+        if ($student->role !== 'student') abort(403, 'Unauthorized.');
 
         $request->validate([
             'name'           => 'required|string|max:255',
@@ -114,59 +150,53 @@ class UserController extends Controller
             'date_of_birth'  => 'required|date',
             'religion'       => 'nullable|string|max:255',
             'mobile_number'  => 'required|string|max:20',
-            'email'          => 'required|email|unique:users,email,' . $student->id,
+            'email'          => [
+                'required','email',
+                Rule::unique('users','email')
+                    ->where(fn($q) => $q->where('school_id', $student->school_id))
+                    ->ignore($student->id),
+            ],
             'password'       => 'nullable|string|min:6',
             'student_photo'  => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'blood_group'    => 'nullable|string|max:10',
             'height'         => 'nullable|string|max:10',
             'weight'         => 'nullable|string|max:10',
             'address'        => 'nullable|string|max:255',
+            // no 'status'
         ]);
 
-        // Update basic info
         $student->name          = trim($request->name);
         $student->last_name     = trim($request->last_name);
         $student->gender        = $request->gender;
         $student->date_of_birth = $request->date_of_birth;
         $student->religion      = $request->religion;
         $student->mobile_number = $request->mobile_number;
-        $student->email         = $request->email;
+        $student->email         = trim($request->email);
         $student->blood_group   = $request->blood_group;
         $student->height        = $request->height;
         $student->weight        = $request->weight;
         $student->address       = $request->address;
 
-        // Update password only if provided
         if (!empty($request->password)) {
             $student->password = bcrypt($request->password);
         }
 
-        // Handle student photo upload
         if ($request->hasFile('student_photo')) {
-            // Delete old photo if exists
-            if (!empty($student->student_photo) && \Storage::exists($student->student_photo)) {
-                \Storage::delete($student->student_photo);
+            if (!empty($student->student_photo) && Storage::disk('public')->exists($student->student_photo)) {
+                Storage::disk('public')->delete($student->student_photo);
             }
-
-            $path = $request->file('student_photo')->store('student_photos', 'public');
-            $student->student_photo = $path;
+            $student->student_photo = $request->file('student_photo')->store('student_photos', 'public');
         }
 
         $student->save();
-
-        return redirect()
-            ->route('student.account')
-            ->with('success', 'Profile updated successfully.');
+        return redirect()->route('student.account')->with('success', 'Profile updated successfully.');
     }
 
+    /** ---------------- Parent self-update (unchanged re: status) ---------------- */
     public function updateMyAccountParent(Request $request)
     {
         $parent = Auth::user();
-
-        // Optional: ensure only parents hit this endpoint
-        if ($parent->role !== 'parent') {
-            abort(403, 'Unauthorized.');
-        }
+        if ($parent->role !== 'parent') abort(403, 'Unauthorized.');
 
         $validated = $request->validate([
             'name'          => 'required|string|max:255',
@@ -174,13 +204,18 @@ class UserController extends Controller
             'gender'        => 'required|in:male,female,other',
             'mobile_number' => 'required|string|max:20',
             'occupation'    => 'required|string|max:255',
-            'email'         => 'required|email|unique:users,email,' . $parent->id,
+            'email'         => [
+                'required','email',
+                Rule::unique('users','email')
+                    ->where(fn($q) => $q->where('school_id', $parent->school_id))
+                    ->ignore($parent->id),
+            ],
             'password'      => 'nullable|string|min:6',
             'address'       => 'nullable|string|max:255',
             'parent_photo'  => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
+            // no 'status'
         ]);
 
-        // Basic fields
         $parent->name          = trim($validated['name']);
         $parent->last_name     = trim($validated['last_name']);
         $parent->gender        = $validated['gender'];
@@ -189,136 +224,123 @@ class UserController extends Controller
         $parent->email         = strtolower($validated['email']);
         $parent->address       = $validated['address'] ?? null;
 
-        // Password (only if provided)
         if (!empty($validated['password'])) {
             $parent->password = bcrypt($validated['password']);
         }
 
-        // Photo upload
         if ($request->hasFile('parent_photo')) {
-            // Delete old photo if exists on public disk
-            if (!empty($parent->parent_photo) && \Storage::disk('public')->exists($parent->parent_photo)) {
-                \Storage::disk('public')->delete($parent->parent_photo);
+            if (!empty($parent->parent_photo) && Storage::disk('public')->exists($parent->parent_photo)) {
+                Storage::disk('public')->delete($parent->parent_photo);
             }
-
-            $path = $request->file('parent_photo')->store('parent_photos', 'public');
-            $parent->parent_photo = $path;
+            $parent->parent_photo = $request->file('parent_photo')->store('parent_photos', 'public');
         }
 
         $parent->save();
-
-        return redirect()
-            ->route('parent.account')
-            ->with('success', 'Profile updated successfully.');
+        return redirect()->route('parent.account')->with('success', 'Profile updated successfully.');
     }
 
+    /** ---------------- Admin (or acting super_admin) self-update — can change status ---------------- */
     public function updateMyAccountAdmin(Request $request)
     {
         $admin = Auth::user();
-
-        // Optional: ensure only parents hit this endpoint
-        if ($admin->role !== 'admin') {
-            abort(403, 'Unauthorized.');
-        }
+        if (!in_array($admin->role, ['admin', 'super_admin'])) abort(403, 'Unauthorized.');
 
         $validated = $request->validate([
-            'name'          => 'required|string|max:255',
-            'email'         => 'required|email|unique:users,email,' . $admin->id,
-            'password'      => 'nullable|string|min:6',
-            'admin_photo'   => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'name'        => 'required|string|max:255',
+            'email'       => [
+                'required','email',
+                Rule::unique('users','email')
+                    ->when($admin->role === 'admin' || session()->has('current_school_id'), function ($r) use ($admin) {
+                        return $r->where('school_id', $admin->school_id);
+                    })
+                    ->ignore($admin->id),
+            ],
+            'password'    => 'nullable|string|min:6',
+            'admin_photo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'last_name'   => 'nullable|string|max:255',
+            'gender'      => 'nullable|in:male,female,other',
+            'mobile_number' => 'nullable|string|max:20',
+            'address'     => 'nullable|string|max:255',
+            'status'      => 'nullable|in:0,1',          // ⬅ allow status here
         ]);
 
         $admin->name          = trim($request->name);
-        $admin->last_name     = trim($request->last_name);
-        $admin->gender        = $request->gender;
+        $admin->last_name     = trim($request->last_name ?? '');
+        $admin->gender        = $request->gender ?? $admin->gender;
         $admin->email         = trim($request->email);
-        $admin->mobile_number = $request->mobile_number;
-        $admin->address       = trim($request->address);
+        $admin->mobile_number = $request->mobile_number ?? $admin->mobile_number;
+        $admin->address       = trim($request->address ?? '');
 
-        // Password (only if provided)
         if (!empty($validated['password'])) {
             $admin->password = bcrypt($validated['password']);
         }
 
-        // Photo upload
-        if ($request->hasFile('admin_photo')) {
-            // Delete old photo if exists on public disk
-            if (!empty($admin->admin_photo) && \Storage::disk('public')->exists($admin->admin_photo)) {
-                \Storage::disk('public')->delete($admin->admin_photo);
-            }
+        if (array_key_exists('status', $validated)) {     // ⬅ update if provided
+            $admin->status = (int) $validated['status'];
+        }
 
-            $path = $request->file('admin_photo')->store('admin_photos', 'public');
-            $admin->admin_photo = $path;
+        if ($request->hasFile('admin_photo')) {
+            if (!empty($admin->admin_photo) && Storage::disk('public')->exists($admin->admin_photo)) {
+                Storage::disk('public')->delete($admin->admin_photo);
+            }
+            $admin->admin_photo = $request->file('admin_photo')->store('admin_photos', 'public');
         }
 
         $admin->save();
 
-        return redirect()->route('admin.account')->with('success', 'Profile updated successfully.');
+        if ($admin->role === 'admin' || session()->has('current_school_id')) {
+            return redirect()->route('admin.account')->with('success', 'Profile updated successfully.');
+        }
+
+        return redirect()->route('superadmin.account')->with('success', 'Profile updated successfully.');
     }
 
+    /** ---------------- Super Admin self-update — can change status ---------------- */
+    public function updateMyAccountSuperAdmin(Request $request)
+    {
+        $user = Auth::user();
+        if ($user->role !== 'super_admin') abort(403, 'Unauthorized.');
 
+        $validated = $request->validate([
+            'name'        => 'required|string|max:255',
+            'email'       => ['required','email', Rule::unique('users','email')->ignore($user->id)],
+            'password'    => 'nullable|string|min:6',
+            'admin_photo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'last_name'   => 'nullable|string|max:255',
+            'gender'      => 'nullable|in:male,female,other',
+            'mobile_number' => 'nullable|string|max:20',
+            'address'     => 'nullable|string|max:255',
+            'status'      => 'nullable|in:0,1',          // ⬅ allow status here
+        ]);
 
+        $user->name          = trim($validated['name']);
+        $user->last_name     = trim($request->last_name ?? '');
+        $user->gender        = $request->gender ?? $user->gender;
+        $user->email         = trim($validated['email']);
+        $user->mobile_number = $request->mobile_number ?? $user->mobile_number;
+        $user->address       = trim($request->address ?? '');
 
+        if (!empty($validated['password'])) {
+            $user->password = bcrypt($validated['password']);
+        }
 
+        if (array_key_exists('status', $validated)) {     // ⬅ update if provided
+            $user->status = (int) $validated['status'];
+        }
 
+        if ($request->hasFile('admin_photo')) {
+            if (!empty($user->admin_photo) && Storage::disk('public')->exists($user->admin_photo)) {
+                Storage::disk('public')->delete($user->admin_photo);
+            }
+            $user->admin_photo = $request->file('admin_photo')->store('superadmin_photos', 'public');
+        }
 
+        $user->save();
 
+        if (session()->has('current_school_id')) {
+            return redirect()->route('admin.account')->with('success', 'Profile updated successfully.');
+        }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // public function changePassword(){
-    //     $data['header_title'] = 'Change Password';
-    //     return view('admin.change_password', $data);
-    // }
-
-    // public function updatePassword(Request $request)
-    // {
-    //     $request->validate([
-    //         'current_password' => 'required',
-    //         'new_password' => 'required|min:6|confirmed',
-    //     ]);
-
-    //     $user = Auth::user();
-
-    //     if (!Hash::check($request->current_password, $user->password)) {
-    //         return redirect()->back()->withErrors(['current_password' => 'Current password is incorrect.']);
-    //     }
-
-    //     $user->password = Hash::make($request->new_password);
-    //     $user->save();
-
-    //     // Redirect based on role
-    //     if ($user->role == 'admin') {
-    //         return redirect()->route('admin.dashboard')->with('success', 'Password updated successfully.');
-    //     }
-    //     elseif ($user->role == 'teacher') {
-    //         return redirect()->route('teacher.dashboard')->with('success', 'Password updated successfully.');
-    //     }
-    //     elseif ($user->role == 'student') {
-    //         return redirect()->route('student.dashboard')->with('success', 'Password updated successfully.');
-    //     }
-    //     elseif ($user->role == 'parent') {
-    //         return redirect()->route('parent.dashboard')->with('success', 'Password updated successfully.');
-    //     }
-
-    //     // Fallback in case role is unexpected
-    //     Auth::logout();
-    //     return redirect()->route('admin.login')->with('success', 'Password updated successfully. Please log in again.');
-    // }
-
-
-
-
-
+        return redirect()->route('superadmin.account')->with('success', 'Profile updated successfully.');
+    }
 }

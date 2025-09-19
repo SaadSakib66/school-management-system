@@ -4,10 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\Traits\BelongsToSchool;
 
 class ExamSchedule extends Model
 {
     use SoftDeletes;
+    use BelongsToSchool;
 
     protected $table = 'exam_schedules';
 
@@ -15,7 +17,7 @@ class ExamSchedule extends Model
     protected $fillable = [
         'exam_id','class_id','subject_id',
         'exam_date','start_time','end_time','room_number',
-        'full_mark','passing_mark','created_by'
+        'full_mark','passing_mark','created_by', 'school_id'
     ];
 
     protected $casts = [

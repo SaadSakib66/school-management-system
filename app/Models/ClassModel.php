@@ -4,14 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\Traits\BelongsToSchool;
 
 class ClassModel extends Model
 {
     use SoftDeletes;
+    use BelongsToSchool;
 
     protected $table = 'classes'; // explicitly define the table name
 
     protected $fillable = [
+        'school_id',
         'name',
         'status',
         'created_by',

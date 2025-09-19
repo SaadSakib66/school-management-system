@@ -21,6 +21,9 @@ class AdminMiddleware
             if(Auth::user()->role == 'admin') {
                 return $next($request);
             }
+            if (Auth::user()->role === 'super_admin' && session()->has('current_school_id')) {
+                return $next($request);
+            }
             else {
                 Auth::logout();
                 return redirect()->route('admin.login')->with('error', 'You are not authorized to access this page.');

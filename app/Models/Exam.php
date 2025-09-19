@@ -4,14 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\Traits\BelongsToSchool;
 
 class Exam extends Model
 {
     //
     use SoftDeletes;
+    use BelongsToSchool;
+
     protected $table = 'exams';
 
-    protected $fillable = ['name','note', 'created_by'];
+    protected $fillable = ['name','note', 'created_by', 'school_id'];
 
     public function creator()
     {

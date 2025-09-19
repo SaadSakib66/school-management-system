@@ -20,12 +20,37 @@ use App\Models\MarksGrade;
 
 class MarksRegisterController extends Controller
 {
+    /* -------------------------------
+     * School-context helpers (P6)
+     * ------------------------------- */
+    protected function currentSchoolId(): ?int
+    {
+        $u = Auth::user();
+        if (! $u) return null;
+        if ($u->role === 'super_admin') {
+            return (int) session('current_school_id');
+        }
+        return (int) $u->school_id;
+    }
+
+    protected function guardSchoolContext()
+    {
+        if (Auth::user()?->role === 'super_admin' && ! $this->currentSchoolId()) {
+            return redirect()
+                ->route('superadmin.schools.switch')
+                ->with('error', 'Please select a school first.');
+        }
+        return null;
+    }
+
     public function list(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $data['header_title'] = 'Marks Register';
         $data['exams']   = Exam::orderBy('name')->get(['id','name']);
         $data['classes'] = ClassModel::getClass();
-        $data['grades'] = MarksGrade::orderBy('percent_from','desc')->get(['grade_name','percent_from','percent_to']);
+        $data['grades']  = MarksGrade::orderBy('percent_from','desc')->get(['grade_name','percent_from','percent_to']);
 
         $selectedExamId  = (int) $request->get('exam_id');
         $selectedClassId = (int) $request->get('class_id');
@@ -33,11 +58,10 @@ class MarksRegisterController extends Controller
         $data['selectedExamId']  = $selectedExamId ?: null;
         $data['selectedClassId'] = $selectedClassId ?: null;
 
-        // Subjects assigned to the class
+        // Subjects assigned to the class (ACTIVE)
         $subjects = collect();
         if ($selectedClassId) {
-            // expects -> id, name
-            $subjects = ClassSubject::subjectsForClass($selectedClassId);
+            $subjects = ClassSubject::subjectsForClass($selectedClassId); // -> id, name
         }
         $data['subjects'] = $subjects;
 
@@ -56,7 +80,7 @@ class MarksRegisterController extends Controller
         if ($selectedClassId) {
             $students = User::where('role', 'student')
                 ->where('class_id', $selectedClassId)
-                ->orderBy('name')
+                ->orderBy('name')->orderBy('last_name')
                 ->get(['id','name','last_name']);
         }
         $data['students'] = $students;
@@ -81,6 +105,8 @@ class MarksRegisterController extends Controller
 
     public function save(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $request->validate([
             'exam_id'        => ['required','exists:exams,id'],
             'class_id'       => ['required','exists:classes,id'],
@@ -98,6 +124,15 @@ class MarksRegisterController extends Controller
             $rows = isset($rows[$onlyStudentId]) ? [$onlyStudentId => $rows[$onlyStudentId]] : [];
         }
 
+        // Allowed students/subjects for this class (guard tampering)
+        $allowedStudentIds = User::where('role','student')
+            ->where('class_id', $classId)
+            ->pluck('id')
+            ->toArray();
+
+        $subjectList = ClassSubject::subjectsForClass($classId);
+        $allowedSubjectIds = $subjectList->pluck('id')->toArray();
+
         // Pull schedule once to know full marks per subject
         $scheduleMap = ExamSchedule::where('exam_id', $examId)
             ->where('class_id', $classId)
@@ -112,9 +147,19 @@ class MarksRegisterController extends Controller
             return $n;
         };
 
-        DB::transaction(function () use ($rows, $examId, $classId, $toInt, $scheduleMap) {
+        DB::transaction(function () use ($rows, $examId, $classId, $toInt, $scheduleMap, $allowedStudentIds, $allowedSubjectIds) {
             foreach ($rows as $studentId => $subjects) {
+                $studentId = (int) $studentId;
+                if (!in_array($studentId, $allowedStudentIds, true)) {
+                    continue; // skip students not in this class
+                }
+
                 foreach ($subjects as $subjectId => $vals) {
+                    $subjectId = (int) $subjectId;
+                    if (!in_array($subjectId, $allowedSubjectIds, true)) {
+                        continue; // skip subjects not in this class
+                    }
+
                     $cw = $toInt($vals['class_work'] ?? null);
                     $hw = $toInt($vals['home_work']  ?? null);
                     $tw = $toInt($vals['test_work']  ?? null);
@@ -125,8 +170,8 @@ class MarksRegisterController extends Controller
                     $keys = [
                         'exam_id'    => $examId,
                         'class_id'   => $classId,
-                        'student_id' => (int) $studentId,
-                        'subject_id' => (int) $subjectId,
+                        'student_id' => $studentId,
+                        'subject_id' => $subjectId,
                     ];
 
                     if ($allEmpty) {
@@ -139,9 +184,9 @@ class MarksRegisterController extends Controller
                     $sum = collect([$cw,$hw,$tw,$ex])->filter(fn($v)=>$v!==null)->sum();
 
                     // Optional guard: do not allow exceeding full mark if defined
-                    $full = optional($scheduleMap->get((int)$subjectId))->full_mark;
+                    $full = optional($scheduleMap->get($subjectId))->full_mark;
                     if (!is_null($full) && $sum > (int)$full) {
-                        // Keep it simple: clamp to full. If you prefer validation, return back with error.
+                        // Clamp to full. If you prefer validation, return back with error instead.
                         $sum = (int)$full;
                     }
 
@@ -174,12 +219,15 @@ class MarksRegisterController extends Controller
 
     public function teacherMarkRegisterList(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $teacher = Auth::user();
         abort_unless($teacher && $teacher->role === 'teacher', 403);
 
-        // ✅ Only ACTIVE class assignments
+        // Only ACTIVE class assignments
         $assignedClassIds = AssignClassTeacherModel::where('teacher_id', $teacher->id)
-            ->where('status', 1)                // <-- only active
+            ->where('status', 1)
+            ->whereNull('deleted_at')
             ->pluck('class_id')
             ->unique()
             ->values();
@@ -194,12 +242,12 @@ class MarksRegisterController extends Controller
         $selectedExamId  = $request->integer('exam_id') ?: null;
         $selectedClassId = $request->integer('class_id') ?: null;
 
-        // ✅ Block inactive / unassigned class
+        // Block inactive / unassigned class
         if ($selectedClassId && !$assignedClassIds->contains($selectedClassId)) {
             abort(403, 'You are not assigned to this class (or it is inactive).');
         }
 
-        // Subjects for the chosen class
+        // Subjects for the chosen class (ACTIVE)
         $subjects = collect();
         if ($selectedClassId) {
             $subjects = ClassSubject::subjectsForClass($selectedClassId); // -> id, name
@@ -219,7 +267,7 @@ class MarksRegisterController extends Controller
         if ($selectedClassId) {
             $students = User::where('role','student')
                 ->where('class_id', $selectedClassId)
-                ->orderBy('name')
+                ->orderBy('name')->orderBy('last_name')
                 ->get(['id','name','last_name']);
         }
 
@@ -252,6 +300,8 @@ class MarksRegisterController extends Controller
 
     public function teacherMarkRegisterSave(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $teacher = Auth::user();
         abort_unless($teacher && $teacher->role === 'teacher', 403);
 
@@ -267,9 +317,10 @@ class MarksRegisterController extends Controller
         $rows    = $request->input('marks', []);
         $onlyId  = (int) $request->input('only_student_id');
 
-        // ✅ Only allow ACTIVE class assignments when saving
+        // Only allow ACTIVE class assignments when saving
         $allowedClassIds = AssignClassTeacherModel::where('teacher_id', $teacher->id)
-            ->where('status', 1)                // <-- only active
+            ->where('status', 1)
+            ->whereNull('deleted_at')
             ->pluck('class_id');
 
         abort_unless($allowedClassIds->contains($classId), 403, 'You are not assigned to this class (or it is inactive).');
@@ -338,7 +389,7 @@ class MarksRegisterController extends Controller
                     $sum  = collect([$cw,$hw,$tw,$ex])->filter(fn($v)=>$v!==null)->sum();
                     $full = optional($scheduleMap->get($subjectId))->full_mark;
                     if (!is_null($full) && $sum > (int) $full) {
-                        $sum = (int) $full; // clamp, or return with error if you prefer
+                        $sum = (int) $full; // clamp (or return with error if preferred)
                     }
 
                     $row = MarksRegister::withTrashed()->firstOrNew($keys);
@@ -370,6 +421,8 @@ class MarksRegisterController extends Controller
 
     public function studentMarkRegisterList(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $student = Auth::user();
         abort_unless($student && $student->role === 'student', 403);
 
@@ -396,11 +449,10 @@ class MarksRegisterController extends Controller
         $selectedExamId  = $request->integer('exam_id') ?: null;
         $examIdsToShow   = $selectedExamId ? [$selectedExamId] : $exams->pluck('id')->all();
 
-        // Load grade bands
+        // Grade bands (per school via global scope)
         $gradeBands = MarksGrade::orderBy('percent_from', 'desc')
             ->get(['grade_name','percent_from','percent_to']);
 
-        // Helper to pick grade by percentage
         $pickGrade = static function (?float $pct) use ($gradeBands) {
             if ($pct === null) return null;
             foreach ($gradeBands as $g) {
@@ -494,15 +546,16 @@ class MarksRegisterController extends Controller
         ]);
     }
 
-
     // Parent-specific method
 
     public function parentMarkRegisterList(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $parent = Auth::user();
         abort_unless($parent && $parent->role === 'parent', 403);
 
-        // 1) Children assigned to this parent
+        // Children assigned to this parent
         $children = $this->childrenForParent($parent->id);
 
         // Auto-select the only child (if exactly one)
@@ -515,7 +568,6 @@ class MarksRegisterController extends Controller
         }
 
         // Build a map of exams per student (based on each child's class)
-        // Structure: [ student_id => [ ['id'=>examId, 'name'=>examName], ... ], ... ]
         $examsByStudent = [];
         if ($children->isNotEmpty()) {
             $classIds = $children->pluck('class_id')->filter()->unique()->values();
@@ -537,7 +589,7 @@ class MarksRegisterController extends Controller
 
         // Exams to render for the currently selected child (server-side initial state)
         $exams = collect($selectedStudentId ? ($examsByStudent[$selectedStudentId] ?? []) : [])
-            ->map(fn($e) => (object) $e); // keep Blade usage $e->id / $e->name
+            ->map(fn($e) => (object) $e);
 
         $selectedExamId = $request->integer('exam_id') ?: null;
 
@@ -633,7 +685,6 @@ class MarksRegisterController extends Controller
         ]);
     }
 
-
     /**
      * Return children assigned to this parent as a collection of:
      * [id, name, last_name, class_id]
@@ -642,39 +693,24 @@ class MarksRegisterController extends Controller
      */
     private function childrenForParent(int $parentId)
     {
-        // If you have a pivot table (recommended)
         if (Schema::hasTable('parent_students')) {
             return User::select('users.id','users.name','users.last_name','users.class_id')
                 ->join('parent_students as ps', 'ps.student_id', '=', 'users.id')
                 ->where('ps.parent_id', $parentId)
                 ->where('users.role', 'student')
                 ->whereNull('users.deleted_at')
-                ->orderBy('users.name')
+                ->orderBy('users.name')->orderBy('users.last_name')
                 ->get();
         }
 
-        // Fallback: direct FK on users.parent_id
         if (Schema::hasColumn('users', 'parent_id')) {
             return User::where('role','student')
                 ->where('parent_id', $parentId)
                 ->whereNull('deleted_at')
-                ->orderBy('name')
+                ->orderBy('name')->orderBy('last_name')
                 ->get(['id','name','last_name','class_id']);
         }
 
-        // Nothing configured
         return collect();
     }
-
-
-
-
-
-
-
-
-
-
-
-
 }

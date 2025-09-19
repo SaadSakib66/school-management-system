@@ -8,11 +8,39 @@ use Illuminate\Http\Request;
 
 class SchoolsController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $schools = School::orderBy('name')->paginate(15);
-        return view('superadmin.schools.index', compact('schools'));
+        $q      = trim((string) $request->get('q', ''));   // text search
+        $status = $request->get('status', null);           // '1', '0', or null
+
+        $query = School::query();
+
+        // Text search over name/short/email
+        if ($q !== '') {
+            $query->where(function ($qq) use ($q) {
+                $qq->where('name', 'like', "%{$q}%")
+                ->orWhere('short_name', 'like', "%{$q}%")
+                ->orWhere('email', 'like', "%{$q}%");
+            });
+        }
+
+        // Status filter
+        if ($status === '1' || $status === '0') {
+            $query->where('status', (int) $status);
+        }
+
+        $schools = $query->orderByDesc('created_at')
+                        ->paginate(15)
+                        ->withQueryString(); // keep q/status in pagination links
+
+        // (Optional) header stats
+        $total    = School::count();
+        $active   = School::where('status', 1)->count();
+        $inactive = School::where('status', 0)->count();
+
+        return view('superadmin.schools.index', compact('schools','total','active','inactive'));
     }
+
 
     public function create()
     {

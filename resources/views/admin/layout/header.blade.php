@@ -17,6 +17,42 @@
 
         <!--end::Navbar Search-->
 
+@php
+    $authUser         = Auth::user();
+    $isSuper          = $authUser && $authUser->role === 'super_admin';
+    $currentSchoolId  = session('current_school_id');
+    $actingAsSchool   = $isSuper && $currentSchoolId;
+@endphp
+
+@if($isSuper)
+  <li class="nav-item d-flex align-items-center me-3">
+      @php
+          $schools = \App\Models\School::orderBy('name')->get();
+          $currentSchool = $currentSchoolId ? \App\Models\School::find($currentSchoolId) : null;
+      @endphp
+
+      <form method="POST" action="{{ route('superadmin.schools.switch.set') }}" class="d-flex align-items-center gap-2">
+          @csrf
+          <label class="me-1 small text-muted d-none d-lg-inline">School</label>
+          <select name="school_id" class="form-select form-select-sm" onchange="this.form.submit()">
+              <option value="">— Select —</option>
+              @foreach($schools as $s)
+                  <option value="{{ $s->id }}" {{ (int)$currentSchoolId === (int)$s->id ? 'selected' : '' }}>
+                      {{ $s->short_name ?? $s->name }}{{ $s->status ? '' : ' (INACTIVE)' }}
+                  </option>
+              @endforeach
+          </select>
+      </form>
+
+      @if($actingAsSchool)
+          <form method="POST" action="{{ route('superadmin.schools.switch.clear') }}" class="ms-2">
+              @csrf
+              <button type="submit" class="btn btn-sm btn-outline-danger">Clear</button>
+          </form>
+      @endif
+  </li>
+@endif
+
         <!--begin::Notifications Dropdown Menu-->
         <li class="nav-item dropdown">
             <a class="nav-link" data-bs-toggle="dropdown" href="#">
@@ -58,6 +94,7 @@
                     'teacher' => 'teacher_photo',
                     'student' => 'student_photo',
                     'parent'  => 'parent_photo',
+                    'super_admin'  => 'admin_photo',
                     default   => null,
                 };
 
@@ -107,6 +144,7 @@
                         'teacher' => route('teacher.account'),
                         'student' => route('student.account'),
                         'parent'  => route('parent.account'),
+                        'super_admin'  => session()->has('current_school_id') ? route('admin.account') : route('superadmin.account'),
                         default   => '#', // fallback if no role match
                     };
                 @endphp

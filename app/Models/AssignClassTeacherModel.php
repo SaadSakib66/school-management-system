@@ -4,25 +4,24 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Models\Traits\BelongsToSchool;
 
 class AssignClassTeacherModel extends Model
 {
     use SoftDeletes;
+    use BelongsToSchool;
 
     protected $table = 'assign_class_teacher';
 
     protected $fillable = [
-        'class_id',
-        'teacher_id',
-        'created_by',
-        'status',
+        'school_id', 'class_id', 'teacher_id', 'status', 'created_by'
     ];
 
-    protected $casts = [
-        'status' => 'boolean',
-    ];
-
+    /* -----------------------------
+     * Relationships (if not already)
+     * ----------------------------- */
     public function class()
     {
         return $this->belongsTo(ClassModel::class, 'class_id');
@@ -33,131 +32,107 @@ class AssignClassTeacherModel extends Model
         return $this->belongsTo(User::class, 'teacher_id');
     }
 
-    public function createdBy()
+    /* -----------------------------
+     * Helpers
+     * ----------------------------- */
+    protected static function currentSchoolId(): ?int
     {
-        return $this->belongsTo(User::class, 'created_by');
+        $u = Auth::user();
+        if (! $u) return null;
+        return $u->role === 'super_admin'
+            ? (int) session('current_school_id')
+            : (int) $u->school_id;
     }
 
-    // List view helper: class name, teacher name, creator name
-    public static function getRecord()
-    {
-        return self::select(
-                'assign_class_teacher.*',
-                'classes.name as class_name',
-                DB::raw("CONCAT(t.name, ' ', t.last_name) as teacher_name"),
-                DB::raw("CONCAT(c.name, ' ', c.last_name) as created_by_name")
-            )
-            ->join('classes', 'assign_class_teacher.class_id', '=', 'classes.id')
-            ->join('users as t', 'assign_class_teacher.teacher_id', '=', 't.id')
-            ->leftJoin('users as c', 'assign_class_teacher.created_by', '=', 'c.id')
-            ->orderBy('assign_class_teacher.id', 'DESC')
-            ->paginate(10);
-    }
+    /* =========================================================
+     * 1) “My Class & Subject” for a teacher (fixes GROUP BY)
+     * ========================================================= */
+public static function getMyClassSubject(int $teacherId, int $perPage = 20)
+{
+    $schoolId = self::currentSchoolId();
 
-    public static function countAlready($class_id, $teacher_id)
-    {
-        return self::where('class_id', $class_id)
-            ->where('teacher_id', $teacher_id)
-            ->first();
-    }
+    return DB::table('assign_class_teacher as act')
+        ->join('classes', 'classes.id', '=', 'act.class_id')
+        ->join('class_subjects as cs', function ($j) {
+            $j->on('cs.class_id', '=', 'act.class_id')
+              ->where('cs.status', 1)
+              ->whereNull('cs.deleted_at');
+        })
+        ->join('subjects as s', function ($j) {
+            $j->on('s.id', '=', 'cs.subject_id')
+              ->whereNull('s.deleted_at');
+        })
+        ->where('act.teacher_id', $teacherId)
+        ->where('act.status', 1)
+        ->whereNull('act.deleted_at')
+        ->when($schoolId, fn($q) => $q->where('act.school_id', $schoolId))
 
-    public static function getMyClassSubject(int $teacher_id)
-    {
-        return self::query()
-            ->join('classes', 'classes.id', '=', 'assign_class_teacher.class_id')
-            ->join('class_subjects as cs', function ($j) {
-                $j->on('cs.class_id', '=', 'assign_class_teacher.class_id')
-                ->where('cs.status', 1)
-                ->whereNull('cs.deleted_at');          // ← exclude soft-deleted links
-            })
-            ->join('subjects as s', function ($j) {
-                $j->on('s.id', '=', 'cs.subject_id')
-                ->where('s.status', 1);
-                // ->whereNull('s.deleted_at');        // ← add if subjects also use SoftDeletes
-            })
-            ->where('assign_class_teacher.teacher_id', $teacher_id)
-            ->where('assign_class_teacher.status', 1)
-            ->select(
-                'assign_class_teacher.*',
-                'classes.name as class_name',
-                DB::raw("GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS subject_name")
-            )
-            ->groupBy(
-                'assign_class_teacher.id',
-                'assign_class_teacher.class_id',
-                'assign_class_teacher.teacher_id',
-                'assign_class_teacher.created_by',
-                'assign_class_teacher.status',
-                'assign_class_teacher.created_at',
-                'assign_class_teacher.updated_at',
-                'assign_class_teacher.deleted_at',
-                'classes.name'
-            )
-            ->orderByDesc('assign_class_teacher.id')
-            ->paginate(10);
-    }
+        // ⬇️ include the fields your Blade expects
+        ->select(
+            'act.id',
+            'act.class_id',
+            'classes.name as class_name',
+            'act.status',
+            'act.created_at',
+            DB::raw("GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS subject_name")
+        )
 
-    public static function getTeacherClasses(int $teacher_id)
+        // ⬇️ group by all non-aggregated columns to satisfy ONLY_FULL_GROUP_BY
+        ->groupBy('act.id', 'act.class_id', 'classes.name', 'act.status', 'act.created_at')
+
+        ->orderBy('classes.name')
+        ->paginate($perPage);
+}
+
+
+    /* =========================================================
+     * 2) Classes list for a teacher (used on "My Students")
+     * ========================================================= */
+    public static function getTeacherClasses(int $teacherId)
     {
-        // Distinct classes assigned to this teacher (active, not soft-deleted)
-        return self::query()
-            ->join('classes', 'classes.id', '=', 'assign_class_teacher.class_id')
-            ->where('assign_class_teacher.teacher_id', $teacher_id)
-            ->where('assign_class_teacher.status', 1)
-            ->whereNull('assign_class_teacher.deleted_at')
+        $schoolId = self::currentSchoolId();
+
+        return DB::table('assign_class_teacher as act')
+            ->join('classes', 'classes.id', '=', 'act.class_id')
+            ->where('act.teacher_id', $teacherId)
+            ->where('act.status', 1)
+            ->whereNull('act.deleted_at')
+            ->when($schoolId, fn($q) => $q->where('act.school_id', $schoolId))
+
+            // distinct classes
             ->select('classes.id', 'classes.name')
-            ->distinct()
+            ->groupBy('classes.id', 'classes.name')
             ->orderBy('classes.name')
             ->get();
     }
 
-    public static function getMyStudents(int $teacher_id, ?int $class_id = null, int $perPage = 10)
+    /* =========================================================
+     * 3) Students of teacher’s classes (optionally one class)
+     * ========================================================= */
+    public static function getMyStudents(int $teacherId, ?int $classId = null, int $perPage = 20)
     {
-        // Students in the teacher’s assigned classes (optionally filtered by one class)
-        $q = self::query()
-            ->join('classes', 'classes.id', '=', 'assign_class_teacher.class_id')
-            ->join('users as stu', function ($j) {
-                $j->on('stu.class_id', '=', 'assign_class_teacher.class_id')
-                ->where('stu.role', 'student')
-                ->whereNull('stu.deleted_at')
-                ->where('stu.status', 1); // uncomment if you only want active students
-            })
-            ->where('assign_class_teacher.teacher_id', $teacher_id)
-            ->where('assign_class_teacher.status', 1)
-            ->whereNull('assign_class_teacher.deleted_at')
-            ->select(
-                'stu.id',
-                'stu.name',
-                'stu.last_name',
-                'stu.email',
-                'stu.mobile_number',
-                'stu.roll_number',
-                'stu.admission_number',
-                'stu.class_id',
-                'classes.name as class_name',
-                'stu.created_at'
-            )
-            ->distinct()
-            ->orderBy('stu.id', 'DESC');
+        $schoolId = self::currentSchoolId();
 
-        if ($class_id) {
-            $q->where('assign_class_teacher.class_id', $class_id);
+        // First get class IDs this teacher handles
+        $classIds = DB::table('assign_class_teacher as act')
+            ->where('act.teacher_id', $teacherId)
+            ->where('act.status', 1)
+            ->whereNull('act.deleted_at')
+            ->when($schoolId, fn($q) => $q->where('act.school_id', $schoolId))
+            ->pluck('act.class_id');
+
+        if ($classIds->isEmpty()) {
+            return collect(); // no classes -> empty result
         }
 
-        return $q->paginate($perPage);
+        return User::query()
+            ->select('users.*', 'classes.name as class_name')
+            ->join('classes', 'classes.id', '=', 'users.class_id')
+            ->where('users.role', 'student')
+            ->whereIn('users.class_id', $classIds->all())
+            ->when($classId, fn($q) => $q->where('users.class_id', $classId))
+            ->when($schoolId, fn($q) => $q->where('users.school_id', $schoolId))
+            ->orderBy('users.name')
+            ->paginate($perPage);
     }
-
-    public static function classesForTeacher(int $teacherId)
-    {
-        return self::select('classes.id', 'classes.name')
-            ->join('classes', 'classes.id', '=', 'assign_class_teacher.class_id')
-            ->where('assign_class_teacher.teacher_id', $teacherId)
-            ->whereNull('assign_class_teacher.deleted_at')
-            ->distinct()
-            ->orderBy('classes.name')
-            ->get();
-    }
-
-
-
 }

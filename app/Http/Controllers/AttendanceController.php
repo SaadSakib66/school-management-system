@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
+use Carbon\Carbon;
+
 use App\Models\Attendance;
 use App\Models\ClassModel;
 use App\Models\User;
@@ -13,33 +15,49 @@ use App\Models\AssignClassTeacherModel;
 
 class AttendanceController extends Controller
 {
+    /* ---------------------------------------
+     | Helper: resolve current school id
+     |----------------------------------------*/
+    protected function currentSchoolId(): ?int
+    {
+        return (int) (session('current_school_id') ?: (Auth::user()->school_id ?? 0)) ?: null;
+    }
+
+    /* =========================================================================
+     | ADMIN: Daily entry page
+     * =========================================================================*/
     public function studentAttendance(Request $request)
     {
         $data['header_title'] = "Student Attendance";
 
-        // Class list
-        $data['classes'] = ClassModel::getClass(); // assumes your helper returns id,name
+        // Classes are already school-scoped via your global scope/trait.
+        $data['classes'] = ClassModel::query()
+            ->select('id','name')
+            ->orderBy('name')
+            ->get();
 
         // Filters
         $selectedClassId = $request->integer('class_id') ?: null;
 
         // Date (max today)
-        $today = Carbon::today()->format('Y-m-d');
+        $today        = Carbon::today()->format('Y-m-d');
         $selectedDate = $request->get('attendance_date');
         if ($selectedDate && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDate)) {
             $selectedDate = null;
         }
-        // you can default to today or leave blank; screenshot shows a picked date
+
         $data['selectedClassId'] = $selectedClassId;
         $data['selectedDate']    = $selectedDate;
+        $data['today']           = $today;
 
         // Students + existing attendance (only when both chosen)
         $students = collect();
         $existing = collect();
+
         if ($selectedClassId && $selectedDate) {
             $students = User::where('role', 'student')
                 ->where('class_id', $selectedClassId)
-                ->orderBy('roll_number') // or ->orderByRaw('CAST(roll_number AS UNSIGNED)') if numeric strings
+                ->orderBy('roll_number')
                 ->get(['id','name','last_name','roll_number']);
 
             $existing = Attendance::where('class_id', $selectedClassId)
@@ -50,26 +68,31 @@ class AttendanceController extends Controller
 
         $data['students'] = $students;
         $data['existing'] = $existing;
-        $data['today']    = $today;
 
         return view('admin.attendance.list', $data);
     }
 
     public function saveStudentAttendance(Request $request)
     {
-        $today = Carbon::today()->format('Y-m-d');
+        $today    = Carbon::today()->format('Y-m-d');
+        $schoolId = $this->currentSchoolId();
 
+        // Validation **scoped to current school**
         $request->validate([
-            'class_id'        => ['required','exists:classes,id'],
+            'class_id'        => [
+                'required',
+                Rule::exists('classes','id')
+                    ->where(fn($q) => $q->where('school_id',$schoolId)->whereNull('deleted_at')),
+            ],
             'attendance_date' => ['required','date','before_or_equal:'.$today],
             'attendance'      => ['array'], // attendance[student_id] = 1|2|3|4
         ]);
 
-        $classId   = (int) $request->class_id;
-        $date      = $request->attendance_date;
-        $rows      = $request->input('attendance', []);
+        $classId = (int) $request->class_id;
+        $date    = $request->attendance_date;
+        $rows    = $request->input('attendance', []);
 
-        // Ensure we only process actual students from the class
+        // Only process students that are in this class (and thus this school)
         $allowedStudentIds = User::where('role','student')
             ->where('class_id', $classId)
             ->pluck('id')
@@ -104,7 +127,9 @@ class AttendanceController extends Controller
         ])->with('success', 'Attendance saved successfully.');
     }
 
-
+    /* =========================================================================
+     | TEACHER: daily attendance entry
+     * =========================================================================*/
     public function teacherAttendance(Request $request)
     {
         $teacher = Auth::user();
@@ -112,7 +137,7 @@ class AttendanceController extends Controller
 
         $data['header_title'] = "Student Attendance";
 
-        // classes actively assigned to this teacher
+        // classes actively assigned to this teacher (scoped by global scope)
         $classes = AssignClassTeacherModel::query()
             ->join('classes', 'classes.id', '=', 'assign_class_teacher.class_id')
             ->where('assign_class_teacher.teacher_id', $teacher->id)
@@ -126,7 +151,7 @@ class AttendanceController extends Controller
         $selectedClassId = $request->integer('class_id') ?: null;
 
         // date (max today)
-        $today = Carbon::today()->format('Y-m-d');
+        $today        = Carbon::today()->format('Y-m-d');
         $selectedDate = $request->get('attendance_date');
         if ($selectedDate && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDate)) {
             $selectedDate = null;
@@ -145,7 +170,7 @@ class AttendanceController extends Controller
 
             $students = User::where('role', 'student')
                 ->where('class_id', $selectedClassId)
-                ->orderBy('roll_number') // show by roll
+                ->orderBy('roll_number')
                 ->get(['id','name','last_name','roll_number']);
 
             $existing = Attendance::where('class_id', $selectedClassId)
@@ -177,6 +202,7 @@ class AttendanceController extends Controller
             ->where('status', 1)
             ->whereNull('deleted_at')
             ->pluck('class_id');
+
         abort_unless($allowed->contains($classId), 403, 'Not your class.');
 
         $date = $request->attendance_date;
@@ -206,13 +232,16 @@ class AttendanceController extends Controller
         ])->with('success', 'Attendance saved successfully.');
     }
 
+    /* =========================================================================
+     | STUDENT: monthly view
+     * =========================================================================*/
     public function studentMonthlyAttendance(Request $request)
     {
         $student = Auth::user();
         abort_unless($student && $student->role === 'student', 403);
 
-        // Resolve month/year from selects (m=1..12, y=YYYY) or fallback to ?month=YYYY-MM or current
-        $now = Carbon::now();
+        // Resolve month/year (m=1..12, y=YYYY) or ?month=YYYY-MM fallback or current
+        $now      = Carbon::now();
         $selMonth = (int) $request->integer('m') ?: null;
         $selYear  = (int) $request->integer('y') ?: null;
 
@@ -227,11 +256,11 @@ class AttendanceController extends Controller
             $selYear  = (int) $dt->year;
         }
 
-        $start = Carbon::createFromDate($selYear, $selMonth, 1)->startOfMonth();
-        $end   = $start->copy()->endOfMonth();
+        $start      = Carbon::createFromDate($selYear, $selMonth, 1)->startOfMonth();
+        $end        = $start->copy()->endOfMonth();
         $monthLabel = $start->format('F - Y'); // "January - 2025"
 
-        // Attendance for this student in month
+        // Attendance for this student in month (scoped)
         $rows = Attendance::where('student_id', $student->id)
             ->whereBetween('attendance_date', [$start->toDateString(), $end->toDateString()])
             ->get()
@@ -240,16 +269,16 @@ class AttendanceController extends Controller
         $labels = [1=>'Present', 2=>'Late', 3=>'Half Day', 4=>'Absent'];
         $badges = [1=>'bg-success', 2=>'bg-warning', 3=>'bg-info', 4=>'bg-danger'];
 
-        $days = [];
+        $days  = [];
         $count = ['present'=>0,'late'=>0,'halfday'=>0,'absent'=>0];
 
         for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
             $key = $cursor->toDateString();
             $rec = $rows->get($key);
 
-            $code = $rec->attendance_type ?? null;
-            $text = $code ? ($labels[$code] ?? '-') : null;
-            $badge= $code ? ($badges[$code] ?? 'bg-secondary') : 'bg-secondary';
+            $code  = $rec->attendance_type ?? null;
+            $text  = $code ? ($labels[$code] ?? '-') : null;
+            $badge = $code ? ($badges[$code] ?? 'bg-secondary') : 'bg-secondary';
 
             if ($code === 1) $count['present']++;
             if ($code === 2) $count['late']++;
@@ -266,7 +295,6 @@ class AttendanceController extends Controller
             ];
         }
 
-        // Year dropdown range (adjust as you like)
         $years = range($now->year - 5, $now->year + 1);
 
         return view('student.attendance', [
@@ -280,7 +308,9 @@ class AttendanceController extends Controller
         ]);
     }
 
-
+    /* =========================================================================
+     | PARENT: monthly view (child picker)
+     * =========================================================================*/
     public function parentMonthlyAttendance(Request $request)
     {
         $parent = Auth::user();
@@ -291,7 +321,7 @@ class AttendanceController extends Controller
             ?: ($children->count() === 1 ? (int)$children->first()->id : null);
 
         // Month/year from selects or fallback
-        $now = Carbon::now();
+        $now      = Carbon::now();
         $selMonth = (int) $request->integer('m') ?: null;
         $selYear  = (int) $request->integer('y') ?: null;
 
@@ -306,8 +336,8 @@ class AttendanceController extends Controller
             $selYear  = (int) $dt->year;
         }
 
-        $start = Carbon::createFromDate($selYear, $selMonth, 1)->startOfMonth();
-        $end   = $start->copy()->endOfMonth();
+        $start      = Carbon::createFromDate($selYear, $selMonth, 1)->startOfMonth();
+        $end        = $start->copy()->endOfMonth();
         $monthLabel = $start->format('F - Y');
 
         $days  = [];
@@ -328,9 +358,9 @@ class AttendanceController extends Controller
                 $key = $cursor->toDateString();
                 $rec = $rows->get($key);
 
-                $code = $rec->attendance_type ?? null;
-                $text = $code ? ($labels[$code] ?? '-') : null;
-                $badge= $code ? ($badges[$code] ?? 'bg-secondary') : 'bg-secondary';
+                $code  = $rec->attendance_type ?? null;
+                $text  = $code ? ($labels[$code] ?? '-') : null;
+                $badge = $code ? ($badges[$code] ?? 'bg-secondary') : 'bg-secondary';
 
                 if ($code === 1) $count['present']++;
                 if ($code === 2) $count['late']++;
@@ -363,9 +393,9 @@ class AttendanceController extends Controller
         ]);
     }
 
-
     /**
      * Children helper (pivot `parent_students` or users.parent_id fallback)
+     * NOTE: User model is globally school-scoped, so this respects the school.
      */
     private function childrenForParent(int $parentId)
     {
@@ -390,21 +420,25 @@ class AttendanceController extends Controller
         return collect();
     }
 
-
+    /* =========================================================================
+     | ADMIN: Attendance report
+     * =========================================================================*/
     public function attendanceReport(Request $request)
     {
         $data['header_title'] = 'Attendance Report';
 
-        // Classes dropdown
+        // Classes dropdown (scoped)
         $data['classes'] = ClassModel::orderBy('name')->get(['id','name']);
 
         // Filters
         $data['today']           = Carbon::today()->format('Y-m-d');
         $data['selectedClassId'] = $request->integer('class_id') ?: null;
-        $data['selectedDate']    = $request->get('attendance_date') ?: null; // expects Y-m-d from <input type="date">
+        $data['selectedDate']    = $request->get('attendance_date') ?: null; // expects Y-m-d
         $data['selectedType']    = $request->get('attendance_type');         // '', '1'..'4'
 
-        $typeMap = Attendance::typeMap();
+        $typeMap = method_exists(Attendance::class,'typeMap')
+            ? Attendance::typeMap()
+            : [1=>'Present', 2=>'Late', 3=>'Half Day', 4=>'Absent'];
 
         $records = null;
 
@@ -431,6 +465,9 @@ class AttendanceController extends Controller
         ]);
     }
 
+    /* =========================================================================
+     | TEACHER: Attendance report
+     * =========================================================================*/
     public function teacherAttendanceReport(Request $request)
     {
         $teacher = Auth::user();
@@ -438,15 +475,14 @@ class AttendanceController extends Controller
 
         $data['header_title'] = 'Attendance Report';
 
-        // Only ACTIVE classes assigned to this teacher
-        // (uses your model helper that already filters status=1 and not soft-deleted)
-        $classes = AssignClassTeacherModel::getTeacherClasses($teacher->id); // -> id, name
+        // Only ACTIVE classes assigned to this teacher (scoped)
+        $classes        = AssignClassTeacherModel::getTeacherClasses($teacher->id); // should return id,name
         $data['classes'] = $classes;
 
         // Filters
         $data['today']           = Carbon::today()->format('Y-m-d');
         $data['selectedClassId'] = $request->integer('class_id') ?: null;
-        $data['selectedDate']    = $request->get('attendance_date') ?: null; // Y-m-d from input[type=date]
+        $data['selectedDate']    = $request->get('attendance_date') ?: null; // Y-m-d
         $data['selectedType']    = $request->get('attendance_type');         // '', '1'..'4'
 
         // Ensure teacher can only query their own classes
@@ -454,7 +490,10 @@ class AttendanceController extends Controller
             abort(403, 'You are not assigned to this class.');
         }
 
-        $typeMap = Attendance::typeMap();
+        $typeMap = method_exists(Attendance::class,'typeMap')
+            ? Attendance::typeMap()
+            : [1=>'Present', 2=>'Late', 3=>'Half Day', 4=>'Absent'];
+
         $records = null;
 
         if ($data['selectedClassId'] && $data['selectedDate']) {
@@ -479,16 +518,4 @@ class AttendanceController extends Controller
             'typeMap' => $typeMap,
         ]);
     }
-
-
-
-
-
-
-
-
-
-
-
-
 }

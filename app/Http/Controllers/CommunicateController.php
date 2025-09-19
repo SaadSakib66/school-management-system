@@ -2,29 +2,44 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\IndividualNotificationMail;
+use App\Models\EmailLog;
 use App\Models\Notice;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Models\EmailLog;
-use App\Models\User;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\IndividualNotificationMail;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
-
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 
 class CommunicateController extends Controller
 {
     /* =========================
-     * LIST
+     * NOTICE BOARD (ADMIN)
      * ========================= */
     public function noticeBoardList(Request $request)
     {
         $perPage = (int) $request->input('per_page', 10);
 
-        $notices = Notice::with('creator')
-            ->latest()
-            ->paginate($perPage);
+        // Optional filters
+        $q    = trim((string) $request->input('q', ''));
+        $from = $request->input('from'); // Y-m-d
+        $to   = $request->input('to');   // Y-m-d
+
+        $notices = Notice::with('creator:id,name,last_name,email')
+            ->when($from, fn($w) => $w->whereDate('publish_date', '>=', $from))
+            ->when($to,   fn($w) => $w->whereDate('publish_date', '<=', $to))
+            ->when($q !== '', function ($w) use ($q) {
+                $w->where(function ($x) use ($q) {
+                    $x->where('title', 'like', "%{$q}%")
+                      ->orWhere('message', 'like', "%{$q}%");
+                });
+            })
+            ->latest('publish_date')
+            ->latest('id')
+            ->paginate($perPage)
+            ->withQueryString();
 
         return view('admin.communicate.notice_board.list', [
             'header_title' => 'Notice Board',
@@ -32,9 +47,6 @@ class CommunicateController extends Controller
         ]);
     }
 
-    /* =========================
-     * ADD (CREATE FORM)
-     * ========================= */
     public function AddNoticeBoard()
     {
         return view('admin.communicate.notice_board.add', [
@@ -42,26 +54,20 @@ class CommunicateController extends Controller
         ]);
     }
 
-    /* =========================
-     * EDIT (EDIT FORM)
-     * ========================= */
     public function EditNoticeBoard($id)
     {
-        $notice = Notice::findOrFail($id);
+        // Scoped by global SchoolScope
+        $notice = Notice::findOrFail((int) $id);
 
-        // Reuse the same blade (it already checks isset($notice))
         return view('admin.communicate.notice_board.add', [
             'header_title' => 'Edit Notice Board',
             'notice'       => $notice,
         ]);
     }
 
-    /* =========================
-     * STORE
-     * ========================= */
     public function StoreNoticeBoard(Request $request)
     {
-        $data = $this->validatedData($request);
+        $data = $this->validatedNotice($request);
 
         Notice::create([
             'title'        => $data['title'],
@@ -77,13 +83,10 @@ class CommunicateController extends Controller
             ->with('success', 'Notice created successfully.');
     }
 
-    /* =========================
-     * UPDATE
-     * ========================= */
     public function UpdateNoticeBoard(Request $request, $id)
     {
-        $notice = Notice::findOrFail($id);
-        $data   = $this->validatedData($request);
+        $notice = Notice::findOrFail((int) $id);
+        $data   = $this->validatedNotice($request);
 
         $notice->update([
             'title'        => $data['title'],
@@ -91,7 +94,6 @@ class CommunicateController extends Controller
             'publish_date' => $data['publish_date'],
             'message_to'   => implode(',', $data['message_to']),
             'message'      => $this->sanitizeMessage($data['message']),
-            // do NOT touch created_by on update
         ]);
 
         return redirect()
@@ -99,12 +101,9 @@ class CommunicateController extends Controller
             ->with('success', 'Notice updated successfully.');
     }
 
-    /* =========================
-     * DESTROY (SOFT DELETE)
-     * ========================= */
     public function DestroyNoticeBoard($id)
     {
-        $notice = Notice::findOrFail($id);
+        $notice = Notice::findOrFail((int) $id);
         $notice->delete();
 
         return redirect()
@@ -113,46 +112,30 @@ class CommunicateController extends Controller
     }
 
     /* =========================
-     * Helpers
+     * NOTICE BOARD (ROLE VIEWS)
      * ========================= */
-    private function validatedData(Request $request): array
-    {
-        return $request->validate([
-            'title'        => 'required|string|max:255',
-            'notice_date'  => 'required|date',
-            'publish_date' => 'required|date',
-            'message_to'   => 'required|array|min:1',
-            'message_to.*' => 'in:student,teacher,parent',
-            'message'      => 'required|string',
-        ]);
-    }
-
-    private function sanitizeMessage(string $html): string
-    {
-        // allow a minimal, safe set of tags
-        $allowed = '<p><br><b><strong><i><em><u><ul><ol><li><a>';
-        return strip_tags($html, $allowed);
-    }
-
     private function myNoticeQuery(Request $request, string $role)
     {
-        $from = $request->input('from');
-        $to   = $request->input('to');
+        $from = $request->input('from'); // Y-m-d
+        $to   = $request->input('to');   // Y-m-d
         $q    = trim((string) $request->input('q', ''));
-        $id   = $request->filled('notice_id') ? (int)$request->input('notice_id') : null;
+        $id   = $request->filled('notice_id') ? (int) $request->input('notice_id') : null;
 
-        return \App\Models\Notice::published()
+        return Notice::published()
             ->forRole($role)
             ->betweenDates($from, $to)
             ->search($q, $id)
-            ->orderByDesc('publish_date')   // primary
-            ->orderByDesc('created_at')     // tie-breaker for same day
-            ->orderByDesc('id');            // final tie-breaker
+            ->orderByDesc('publish_date')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
     }
 
     public function studentNotices(Request $request)
     {
-        $notices = $this->myNoticeQuery($request, 'student')->paginate(10)->withQueryString();
+        $notices = $this->myNoticeQuery($request, 'student')
+            ->paginate(10)
+            ->withQueryString();
+
         return view('student.my_notice_board', [
             'header_title' => 'My Notice Board',
             'notices'      => $notices,
@@ -162,7 +145,10 @@ class CommunicateController extends Controller
 
     public function teacherNotices(Request $request)
     {
-        $notices = $this->myNoticeQuery($request, 'teacher')->paginate(10)->withQueryString();
+        $notices = $this->myNoticeQuery($request, 'teacher')
+            ->paginate(10)
+            ->withQueryString();
+
         return view('teacher.my_notice_board', [
             'header_title' => 'My Notice Board',
             'notices'      => $notices,
@@ -172,7 +158,10 @@ class CommunicateController extends Controller
 
     public function parentNotices(Request $request)
     {
-        $notices = $this->myNoticeQuery($request, 'parent')->paginate(10)->withQueryString();
+        $notices = $this->myNoticeQuery($request, 'parent')
+            ->paginate(10)
+            ->withQueryString();
+
         return view('parent.my_notice_board', [
             'header_title' => 'My Notice Board',
             'notices'      => $notices,
@@ -180,15 +169,15 @@ class CommunicateController extends Controller
         ]);
     }
 
-    // Email Send
-
+    /* =========================
+     * SEND EMAIL (ADMIN)
+     * ========================= */
     public function emailForm()
     {
         return view('admin.communicate.email.send', [
             'header_title' => 'Send Email',
         ]);
     }
-
 
     public function searchRecipients(Request $request)
     {
@@ -197,12 +186,13 @@ class CommunicateController extends Controller
         $role = strtolower($request->role);
         $q    = trim((string) $request->input('q', ''));
 
-        $users = \App\Models\User::whereRaw('LOWER(role) = ?', [$role])
+        // User model is school-scoped by global scope; this automatically filters to current school
+        $users = User::whereRaw('LOWER(role) = ?', [$role])
             ->whereNotNull('email')->where('email', '<>', '')
             ->when($q !== '', function ($w) use ($q) {
                 $w->where(function ($x) use ($q) {
                     $x->where('name', 'like', "%{$q}%")
-                    ->orWhere('email', 'like', "%{$q}%");
+                      ->orWhere('email', 'like', "%{$q}%");
                 });
             })
             ->orderBy('name')
@@ -217,8 +207,6 @@ class CommunicateController extends Controller
         ]);
     }
 
-
-
     public function emailSend(Request $request)
     {
         $data = $request->validate([
@@ -229,7 +217,7 @@ class CommunicateController extends Controller
             'attachments.*' => 'file|max:5120', // 5MB each
         ]);
 
-        // Find the recipient within the selected role
+        // Recipient is school-scoped (User model scope applies)
         $user = User::where('id', $data['recipient'])
             ->whereRaw('LOWER(role) = ?', [strtolower($data['role'])])
             ->firstOrFail();
@@ -243,10 +231,8 @@ class CommunicateController extends Controller
         $html    = strip_tags($data['message'], $allowed);
         $text    = trim(strip_tags(str_replace(['<br>', '<br/>', '</p>'], "\n", $html)));
 
-        // Build the mailable
         $mailable = new IndividualNotificationMail($data['subject'], $html, $text);
 
-        // Attach files (if any)
         if ($request->hasFile('attachments')) {
             foreach ((array) $request->file('attachments') as $file) {
                 if ($file && $file->isValid()) {
@@ -258,7 +244,6 @@ class CommunicateController extends Controller
             }
         }
 
-        // Send immediately (no queue)
         $status = 'sent';
         $error  = null;
 
@@ -273,7 +258,6 @@ class CommunicateController extends Controller
                 'error' => $error,
             ]);
 
-            // Save a failed log row too (optional but useful)
             EmailLog::create([
                 'role'       => $data['role'],
                 'user_id'    => $user->id,
@@ -290,7 +274,6 @@ class CommunicateController extends Controller
             return back()->with('error', "Email failed: {$error}")->withInput();
         }
 
-        // Log success
         EmailLog::create([
             'role'       => $data['role'],
             'user_id'    => $user->id,
@@ -307,66 +290,88 @@ class CommunicateController extends Controller
         return redirect()->route('admin.email.form')->with('success', 'Email sent successfully.');
     }
 
-
-    // (optional) simple log table
     public function emailLogs()
     {
-        if (!Schema::hasTable('email_logs')) {
+        if (! Schema::hasTable('email_logs')) {
             return redirect()
                 ->route('admin.email.form')
                 ->with('error', 'Email logs table not found. Please run migrations.');
         }
 
-        $logs = \App\Models\EmailLog::with('user','sender')->latest()->paginate(20);
+        // EmailLog model should also use BelongsToSchool so this is scoped
+        $logs = EmailLog::with(['user:id,name,email','sender:id,name,email'])
+            ->latest('sent_at')
+            ->latest('id')
+            ->paginate(20);
+
         return view('admin.communicate.email.logs', [
             'header_title' => 'Email Logs',
-            'logs' => $logs,
+            'logs'         => $logs,
         ]);
     }
 
-
+    /* =========================
+     * ROLE INBOXES
+     * ========================= */
     private function inboxQuery(Request $request)
     {
-        // Simple filters (optional): q (subject/text), from/to (sent_at)
-        $q    = trim((string) $request->input('q',''));
+        $q    = trim((string) $request->input('q', ''));
         $from = $request->input('from');
         $to   = $request->input('to');
 
         return EmailLog::forUser(Auth::id())
             ->sent()
-            ->when($from, fn($w)=>$w->whereDate('sent_at','>=',$from))
-            ->when($to,   fn($w)=>$w->whereDate('sent_at','<=',$to))
-            ->when($q !== '', function($w) use ($q){
-                $w->where(function($x) use ($q){
-                    $x->where('subject','like',"%{$q}%")
-                    ->orWhere('body_text','like',"%{$q}%");
+            ->when($from, fn($w) => $w->whereDate('sent_at', '>=', $from))
+            ->when($to,   fn($w) => $w->whereDate('sent_at', '<=', $to))
+            ->when($q !== '', function ($w) use ($q) {
+                $w->where(function ($x) use ($q) {
+                    $x->where('subject', 'like', "%{$q}%")
+                      ->orWhere('body_text', 'like', "%{$q}%");
                 });
             })
-            ->latest('sent_at');
+            ->latest('sent_at')
+            ->latest('id');
     }
 
     public function studentInbox(Request $request)
     {
         $logs = $this->inboxQuery($request)->paginate(10)->withQueryString();
-        return view('student.my_email', ['header_title' => 'My Emails', 'logs' => $logs, 'role'=>'student']);
+        return view('student.my_email', [
+            'header_title' => 'My Emails',
+            'logs'         => $logs,
+            'role'         => 'student',
+        ]);
     }
+
     public function teacherInbox(Request $request)
     {
         $logs = $this->inboxQuery($request)->paginate(10)->withQueryString();
-        return view('teacher.my_email', ['header_title' => 'My Emails', 'logs' => $logs, 'role'=>'teacher']);
+        return view('teacher.my_email', [
+            'header_title' => 'My Emails',
+            'logs'         => $logs,
+            'role'         => 'teacher',
+        ]);
     }
+
     public function parentInbox(Request $request)
     {
         $logs = $this->inboxQuery($request)->paginate(10)->withQueryString();
-        return view('parent.my_email', ['header_title' => 'My Emails', 'logs' => $logs, 'role'=>'parent']);
+        return view('parent.my_email', [
+            'header_title' => 'My Emails',
+            'logs'         => $logs,
+            'role'         => 'parent',
+        ]);
     }
 
-    public function showInboxItem(EmailLog $log)
+    public function showInboxItem($id)
     {
-        abort_unless($log->user_id === Auth::id(), 403);
+        // Avoid implicit binding; enforce ownership AND (via model) school scope.
+        $log = EmailLog::whereKey((int) $id)
+            ->where('user_id', Auth::id())
+            ->firstOrFail();
 
-        if (!$log->is_read) {
-            $log->forceFill(['is_read'=>true,'read_at'=>now()])->save();
+        if (! $log->is_read) {
+            $log->forceFill(['is_read' => true, 'read_at' => now()])->save();
         }
 
         return view('inbox.show', [
@@ -375,5 +380,24 @@ class CommunicateController extends Controller
         ]);
     }
 
+    /* =========================
+     * Helpers
+     * ========================= */
+    private function validatedNotice(Request $request): array
+    {
+        return $request->validate([
+            'title'        => ['required','string','max:255'],
+            'notice_date'  => ['required','date'],
+            'publish_date' => ['required','date'],
+            'message_to'   => ['required','array','min:1'],
+            'message_to.*' => ['in:student,teacher,parent'],
+            'message'      => ['required','string'],
+        ]);
+    }
 
+    private function sanitizeMessage(string $html): string
+    {
+        $allowed = '<p><br><b><strong><i><em><u><ul><ol><li><a>';
+        return strip_tags($html, $allowed);
+    }
 }

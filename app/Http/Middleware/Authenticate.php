@@ -25,16 +25,7 @@ class Authenticate
             if ($request->is('admin/*')) {
                 return route('admin.login');
             }
-            // if ($request->is('teacher/*')) {
-            //     return route('teacher.login.page'); // Create if needed
-            // }
-            // if ($request->is('student/*')) {
-            //     return route('student.login.page'); // Create if needed
-            // }
-            // if ($request->is('parent/*')) {
-            //     return route('parent.login.page'); // Create if needed
-            // }
-
+            
             // Default login route (optional)
             return route('admin.login');
         }

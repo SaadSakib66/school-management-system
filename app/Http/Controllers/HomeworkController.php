@@ -7,23 +7,53 @@ use App\Models\ClassModel;
 use App\Models\Subject;
 use App\Models\User;
 use App\Models\ClassSubject;
+use App\Models\HomeworkSubmission;
+use App\Models\AssignClassTeacherModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
-use App\Models\HomeworkSubmission;
-use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Carbon\Carbon;
 
 class HomeworkController extends Controller
 {
+    /* ------------------------------------------------------------
+     * Helpers
+     * ------------------------------------------------------------ */
+    protected function currentSchoolId(): ?int
+    {
+        $u = Auth::user();
+        if (! $u) return null;
+        if ($u->role === 'super_admin') {
+            return (int) session('current_school_id');
+        }
+        return (int) $u->school_id;
+    }
+
+    protected function guardSchoolContext()
+    {
+        if (Auth::user()?->role === 'super_admin' && ! $this->currentSchoolId()) {
+            return redirect()
+                ->route('superadmin.schools.switch')
+                ->with('error', 'Please select a school first.');
+        }
+        return null;
+    }
+
+    /* =========================
+     * ADMIN HOMEWORK
+     * ========================= */
+
     // LIST with filters
     public function homeworkList(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $data['header_title'] = "Homework List";
         $data['getClass']     = ClassModel::getClass();
 
-        $selectedClassId      = $request->integer('class_id');
+        $selectedClassId = $request->integer('class_id');
 
         // subjects for subject filter (context-aware)
         $data['getSubject'] = $selectedClassId
@@ -56,9 +86,11 @@ class HomeworkController extends Controller
         return view('admin.homework.list', $data);
     }
 
-    // ADD form; subjects limited by class_subjects when a class is preselected
+    // ADD form
     public function homeworkAdd(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $selectedClassId = old('class_id') ?? (int)$request->query('class_id');
 
         $data['getClass']        = ClassModel::getClass();
@@ -72,8 +104,15 @@ class HomeworkController extends Controller
     // AJAX: subjects for a class from class_subjects
     public function classSubjects(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
+        $schoolId = $this->currentSchoolId();
+
         $request->validate([
-            'class_id' => ['required','integer','exists:classes,id'],
+            'class_id' => [
+                'required','integer',
+                Rule::exists('classes','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
+            ],
         ]);
 
         return response()->json(
@@ -84,14 +123,23 @@ class HomeworkController extends Controller
     // STORE
     public function homeworkStore(Request $request)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
+        $schoolId = $this->currentSchoolId();
+
         $validated = $request->validate([
-            'class_id'        => ['required','integer','exists:classes,id'],
+            'class_id'        => [
+                'required','integer',
+                Rule::exists('classes','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
+            ],
             'subject_id'      => [
-                'required','integer','exists:subjects,id',
+                'required','integer',
+                Rule::exists('subjects','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
                 Rule::exists('class_subjects','subject_id')
-                    ->where(fn($q) => $q->where('class_id', $request->class_id)
+                    ->where(fn($q) => $q->where('class_id', request('class_id'))
                                          ->where('status', 1)
-                                         ->whereNull('deleted_at')),
+                                         ->whereNull('deleted_at')
+                                         ->where('school_id', $schoolId)),
             ],
             'homework_date'   => ['required','date'],
             'submission_date' => ['nullable','date','after_or_equal:homework_date'],
@@ -99,10 +147,9 @@ class HomeworkController extends Controller
             'document_file'   => ['nullable','file','mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,zip','max:10240'],
         ]);
 
-        // --- Trim & normalize ---
         $data = $this->trimStrings($validated);
         $data['submission_date'] = $data['submission_date'] ?? null;
-        $data['description'] = $this->cleanHtmlTail($data['description'] ?? null);
+        $data['description']     = $this->cleanHtmlTail($data['description'] ?? null);
         $data['class_id']        = (int) $data['class_id'];
         $data['subject_id']      = (int) $data['subject_id'];
 
@@ -126,6 +173,8 @@ class HomeworkController extends Controller
     // EDIT
     public function homeworkEdit($id)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $homework = Homework::withTrashed()->findOrFail($id);
         $selectedClassId          = old('class_id', $homework->class_id);
 
@@ -135,22 +184,30 @@ class HomeworkController extends Controller
         $data['selectedClassId']  = $selectedClassId;
         $data['header_title']     = "Homework Edit";
 
-        return view('admin.homework.add', $data); // reuse same blade
+        return view('admin.homework.add', $data);
     }
 
     // UPDATE
     public function homeworkUpdate(Request $request, $id)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
+        $schoolId = $this->currentSchoolId();
         $homework = Homework::withTrashed()->findOrFail($id);
 
         $validated = $request->validate([
-            'class_id'        => ['required','integer','exists:classes,id'],
+            'class_id'        => [
+                'required','integer',
+                Rule::exists('classes','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
+            ],
             'subject_id'      => [
-                'required','integer','exists:subjects,id',
+                'required','integer',
+                Rule::exists('subjects','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
                 Rule::exists('class_subjects','subject_id')
-                    ->where(fn($q) => $q->where('class_id', $request->class_id)
+                    ->where(fn($q) => $q->where('class_id', request('class_id'))
                                          ->where('status', 1)
-                                         ->whereNull('deleted_at')),
+                                         ->whereNull('deleted_at')
+                                         ->where('school_id', $schoolId)),
             ],
             'homework_date'   => ['required','date'],
             'submission_date' => ['nullable','date','after_or_equal:homework_date'],
@@ -159,12 +216,10 @@ class HomeworkController extends Controller
             'remove_file'     => ['nullable','boolean'],
         ]);
 
-        // --- Trim & normalize ---
         $data = $this->trimStrings($validated);
-        $data['description'] = $this->cleanHtmlTail($data['description'] ?? null);
+        $data['description']     = $this->cleanHtmlTail($data['description'] ?? null);
         if ($data['description'] === '') $data['description'] = null;
         $data['submission_date'] = $data['submission_date'] ?? null;
-        // $data['description']     = isset($data['description']) && $data['description'] !== '' ? $data['description'] : null;
         $data['class_id']        = (int) $data['class_id'];
         $data['subject_id']      = (int) $data['subject_id'];
 
@@ -194,6 +249,8 @@ class HomeworkController extends Controller
     // SOFT DELETE
     public function homeworkDelete($id)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $homework = Homework::findOrFail($id);
         $homework->delete();
         return back()->with('success', 'Homework moved to trash.');
@@ -202,6 +259,8 @@ class HomeworkController extends Controller
     // RESTORE
     public function homeworkRestore($id)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $homework = Homework::onlyTrashed()->findOrFail($id);
         $homework->restore();
         return back()->with('success', 'Homework restored.');
@@ -210,6 +269,8 @@ class HomeworkController extends Controller
     // FORCE DELETE
     public function homeworkForceDelete($id)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $homework = Homework::onlyTrashed()->findOrFail($id);
         if ($homework->document_file) {
             Storage::disk('public')->delete($homework->document_file);
@@ -221,6 +282,8 @@ class HomeworkController extends Controller
     // DOWNLOAD
     public function homeworkDownload($id)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $homework = Homework::withTrashed()->findOrFail($id);
         abort_unless($homework->document_file && Storage::disk('public')->exists($homework->document_file), 404, 'File not found');
 
@@ -254,12 +317,11 @@ class HomeworkController extends Controller
         return $html;
     }
 
-/* =========================
- |  TEACHER HOMEWORK MODULE
- |  (routes you provided)
- * ========================= */
+    /* =========================
+     * TEACHER HOMEWORK
+     * ========================= */
 
-// GET /teacher/homework/list
+    // GET /teacher/homework/list
     public function teacherHomeworkList(Request $request)
     {
         $classIds = $this->myClassIds(); // classes assigned to this teacher
@@ -296,7 +358,6 @@ class HomeworkController extends Controller
         return view('teacher.homework.list', $data);
     }
 
-
     // GET /teacher/homework/add
     public function teacherHomeworkAdd(Request $request)
     {
@@ -314,8 +375,13 @@ class HomeworkController extends Controller
     // GET /teacher/homework/subjects-by-class  (AJAX)
     public function teacherHomeworkClassSubjects(Request $request)
     {
+        $schoolId = $this->currentSchoolId();
+
         $request->validate([
-            'class_id' => ['required','integer','exists:classes,id'],
+            'class_id' => [
+                'required','integer',
+                Rule::exists('classes','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
+            ],
         ]);
 
         $classId = (int) $request->class_id;
@@ -327,16 +393,23 @@ class HomeworkController extends Controller
     // POST /teacher/homework/store
     public function teacherHomeworkStore(Request $request)
     {
+        $schoolId = $this->currentSchoolId();
         $classIds = $this->myClassIds();
 
         $validated = $request->validate([
-            'class_id'        => ['required','integer','in:'.($classIds->implode(','))],
+            'class_id'        => [
+                'required','integer',
+                Rule::in($classIds->toArray()),
+                Rule::exists('classes','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
+            ],
             'subject_id'      => [
-                'required','integer','exists:subjects,id',
+                'required','integer',
+                Rule::exists('subjects','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
                 Rule::exists('class_subjects','subject_id')
-                    ->where(fn($q) => $q->where('class_id', $request->class_id)
+                    ->where(fn($q) => $q->where('class_id', request('class_id'))
                                         ->where('status', 1)
-                                        ->whereNull('deleted_at')),
+                                        ->whereNull('deleted_at')
+                                        ->where('school_id', $schoolId)),
             ],
             'homework_date'   => ['required','date'],
             'submission_date' => ['nullable','date','after_or_equal:homework_date'],
@@ -344,7 +417,6 @@ class HomeworkController extends Controller
             'document_file'   => ['nullable','file','mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,zip','max:10240'],
         ]);
 
-        // sanitize
         $data = $this->trimStrings($validated);
         $data['description']     = $this->cleanHtmlTail($data['description'] ?? null);
         $data['submission_date'] = $data['submission_date'] ?? null;
@@ -381,25 +453,33 @@ class HomeworkController extends Controller
         $data['selectedClassId'] = $selectedClassId;
         $data['header_title']    = 'Homework Edit';
 
-        return view('teacher.homework.add', $data); // reuse teacher add blade
+        return view('teacher.homework.add', $data);
     }
 
     // PUT /teacher/homework/{id}/update
     public function teacherHomeworkUpdate(Request $request, $id)
     {
+        $schoolId = $this->currentSchoolId();
+
         $homework = Homework::withTrashed()->findOrFail($id);
         abort_unless($homework->created_by == Auth::id(), 403);
 
         $classIds = $this->myClassIds();
 
         $validated = $request->validate([
-            'class_id'        => ['required','integer','in:'.($classIds->implode(','))],
+            'class_id'        => [
+                'required','integer',
+                Rule::in($classIds->toArray()),
+                Rule::exists('classes','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
+            ],
             'subject_id'      => [
-                'required','integer','exists:subjects,id',
+                'required','integer',
+                Rule::exists('subjects','id')->where(fn($q)=>$q->where('school_id',$schoolId)),
                 Rule::exists('class_subjects','subject_id')
-                    ->where(fn($q) => $q->where('class_id', $request->class_id)
+                    ->where(fn($q) => $q->where('class_id', request('class_id'))
                                         ->where('status', 1)
-                                        ->whereNull('deleted_at')),
+                                        ->whereNull('deleted_at')
+                                        ->where('school_id', $schoolId)),
             ],
             'homework_date'   => ['required','date'],
             'submission_date' => ['nullable','date','after_or_equal:homework_date'],
@@ -459,13 +539,11 @@ class HomeworkController extends Controller
 
     /* ===== Helpers (teacher scope) ===== */
 
-    // All class IDs assigned to the logged-in teacher
+    // All class IDs assigned to the logged-in teacher (scoped by school)
     private function myClassIds()
     {
-        return DB::table('assign_class_teacher')
-            ->where('teacher_id', Auth::id())
+        return AssignClassTeacherModel::where('teacher_id', Auth::id())
             ->where('status', 1)
-            ->whereNull('deleted_at')
             ->pluck('class_id')
             ->values();
     }
@@ -473,6 +551,7 @@ class HomeworkController extends Controller
     // Distinct subjects across a set of classes (used for the filter when no class selected)
     private function subjectsForClasses($classIds)
     {
+        $schoolId = $this->currentSchoolId();
         if (empty($classIds) || count($classIds) === 0) return collect();
 
         return Subject::select('subjects.id','subjects.name')
@@ -480,19 +559,18 @@ class HomeworkController extends Controller
             ->whereIn('class_subjects.class_id', $classIds)
             ->where('class_subjects.status', 1)
             ->whereNull('class_subjects.deleted_at')
+            ->where('class_subjects.school_id', $schoolId)
             ->whereNull('subjects.deleted_at')
             ->distinct()
             ->orderBy('subjects.name')
             ->get();
     }
 
+    /* =========================
+     * STUDENT HOMEWORK
+     * ========================= */
 
-/* =========================
- |  STUDENT HOMEWORK MODULE
- |  (routes target these methods)
- * ========================= */
-
-// GET /student/homework  -> name: student.homework.list
+    // GET /student/homework
     public function studentHomeworkList(Request $request)
     {
         $student = Auth::user();
@@ -510,7 +588,6 @@ class HomeworkController extends Controller
                 'submissions' => fn($q) => $q->where('student_id', $studentId)
             ])
             ->where('class_id', $classId)
-            // apply subject filter only if it's in the allowed set
             ->when(
                 $request->filled('subject_id') && $allowedSubjectIds->contains($request->integer('subject_id')),
                 fn($q) => $q->where('subject_id', $request->integer('subject_id'))
@@ -523,11 +600,11 @@ class HomeworkController extends Controller
         return view('student.homework.list', [
             'header_title' => 'My Homework',
             'homeworks'    => $homeworks,
-            'subjects'     => $subjects, // <- pass ONLY class-assigned subjects
+            'subjects'     => $subjects,
         ]);
     }
 
-    // GET /student/homework/{homework}/submit  -> name: student.homework.submit
+    // GET /student/homework/{homework}/submit
     public function studentSubmitHomework(Request $request, $homeworkId)
     {
         $student  = Auth::user();
@@ -540,7 +617,7 @@ class HomeworkController extends Controller
             ->first();
 
         $isClosed = $homework->submission_date
-            ? now()->gt($homework->submission_date->endOfDay())
+            ? now()->gt(Carbon::parse($homework->submission_date)->endOfDay())
             : false;
 
         return view('student.homework.submit', [
@@ -551,16 +628,15 @@ class HomeworkController extends Controller
         ]);
     }
 
-    // POST /student/homework/{homework}/submit  -> name: student.homework.submit.store
+    // POST /student/homework/{homework}/submit
     public function studentSubmitHomeworkStore(Request $request, $homeworkId)
     {
         $student  = Auth::user();
         $homework = Homework::findOrFail($homeworkId);
         abort_unless($student && $student->class_id == $homework->class_id, 403);
 
-        // Block after due date (server-side enforcement)
         $isClosed = $homework->submission_date
-            ? now()->gt($homework->submission_date->endOfDay())
+            ? now()->gt(Carbon::parse($homework->submission_date)->endOfDay())
             : false;
         if ($isClosed) {
             return back()->withErrors(['text_content' => 'Submission window is closed.'])->withInput();
@@ -590,7 +666,7 @@ class HomeworkController extends Controller
         }
 
         $submission->text_content = $text;
-        if (!$submission->submitted_at) {
+        if (! $submission->submitted_at) {
             $submission->submitted_at = now();
         }
         $submission->save();
@@ -598,7 +674,7 @@ class HomeworkController extends Controller
         return redirect()->route('student.homework.submitted')->with('success', 'Submission saved.');
     }
 
-    // GET /student/homework/{homework}/download  -> name: student.homework.download
+    // GET /student/homework/{homework}/download
     public function studentHomeworkDownload($homeworkId)
     {
         $student  = Auth::user();
@@ -610,7 +686,7 @@ class HomeworkController extends Controller
         return response()->download(Storage::disk('public')->path($homework->document_file));
     }
 
-    // GET /student/homework/submitted  -> name: student.homework.submitted
+    // GET /student/homework/submitted
     public function studentSubmitHomeworkList(Request $request)
     {
         $studentId = Auth::id();
@@ -626,7 +702,7 @@ class HomeworkController extends Controller
         ]);
     }
 
-    // GET /student/homework/submission/{id}/download  -> name: student.homework.submission.download
+    // GET /student/homework/submission/{id}/download
     public function studentSubmitHomeworkDownload($id)
     {
         $submission = HomeworkSubmission::findOrFail($id);
@@ -636,32 +712,32 @@ class HomeworkController extends Controller
         return response()->download(Storage::disk('public')->path($submission->attachment));
     }
 
-    /* ---- helper for Summernote text ---- */
     private function cleanHtml(?string $html): ?string
     {
         if ($html === null) return null;
-        // remove NBSP/space immediately before closing tags; then trim
         $html = preg_replace('/(?:\x{00A0}|&nbsp;|\h)+(?=<\/[a-z][^>]*>)/iu', ' ', $html);
         $html = preg_replace('/^\s+|\s+$/u', '', $html);
         return $html === '' ? null : $html;
     }
 
-
-/**
- * Admin: Submissions list for a homework (shows all students in that class, with/without submission).
- */
+    /**
+     * Admin: Submissions list for a homework (shows all students in that class, with/without submission).
+     */
     public function adminHomeworkSubmissionsIndex(Request $request, $homeworkId)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
+        $schoolId = $this->currentSchoolId();
         $homework = Homework::with(['class','subject','creator'])->findOrFail($homeworkId);
 
-        // Base: all students in this homework's class
         $query = User::query()
             ->where('role', 'student')
             ->where('class_id', $homework->class_id)
-            ->leftJoin('homework_submissions as hs', function ($join) use ($homework) {
+            ->leftJoin('homework_submissions as hs', function ($join) use ($homework, $schoolId) {
                 $join->on('hs.student_id', '=', 'users.id')
                     ->where('hs.homework_id', $homework->id)
-                    ->whereNull('hs.deleted_at');
+                    ->whereNull('hs.deleted_at')
+                    ->where('hs.school_id', $schoolId);
             })
             ->select([
                 'users.*',
@@ -672,14 +748,13 @@ class HomeworkController extends Controller
                 'hs.created_at as submission_created_at',
             ]);
 
-        // Filters
         if ($request->filled('q')) {
             $term = '%'.$request->input('q').'%';
             $query->where(function ($q) use ($term) {
                 $q->where('users.name', 'like', $term)
-                ->orWhere('users.last_name', 'like', $term)
-                ->orWhere('users.roll_number', 'like', $term)
-                ->orWhere('users.email', 'like', $term);
+                  ->orWhere('users.last_name', 'like', $term)
+                  ->orWhere('users.roll_number', 'like', $term)
+                  ->orWhere('users.email', 'like', $term);
             });
         }
 
@@ -691,7 +766,7 @@ class HomeworkController extends Controller
         }
 
         $students = $query
-            ->orderByRaw('CASE WHEN hs.id IS NULL THEN 1 ELSE 0 END') // submissions first
+            ->orderByRaw('CASE WHEN hs.id IS NULL THEN 1 ELSE 0 END')
             ->orderBy('users.name')
             ->paginate(20)
             ->appends($request->query());
@@ -708,34 +783,35 @@ class HomeworkController extends Controller
      */
     public function adminHomeworkSubmissionDownload($submissionId)
     {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
         $submission = HomeworkSubmission::with(['homework'])->findOrFail($submissionId);
 
-        // Basic sanity: ensure the homework exists (admin can access all)
         abort_unless($submission->attachment && Storage::disk('public')->exists($submission->attachment), 404, 'File not found');
 
         return response()->download(Storage::disk('public')->path($submission->attachment));
     }
 
-
-/**
- * Teacher: list ALL students of this homework's class with their submission (if any).
- */
+    /**
+     * Teacher: list ALL students of this homework's class with their submission (if any).
+     */
     public function teacherHomeworkSubmissionsIndex(Request $request, $homeworkId)
     {
+        $schoolId = $this->currentSchoolId();
+
         $homework = Homework::with(['class','subject','creator'])->findOrFail($homeworkId);
 
-        // Make sure this homework's class is assigned to the teacher
-        $classIds = $this->myClassIds(); // you already have this helper using 'assign_class_teacher'
+        $classIds = $this->myClassIds();
         abort_unless($classIds->contains($homework->class_id), 403);
 
-        // Base query: all students in the homework's class
         $query = User::query()
             ->where('role', 'student')
             ->where('class_id', $homework->class_id)
-            ->leftJoin('homework_submissions as hs', function ($join) use ($homework) {
+            ->leftJoin('homework_submissions as hs', function ($join) use ($homework, $schoolId) {
                 $join->on('hs.student_id', '=', 'users.id')
                     ->where('hs.homework_id', $homework->id)
-                    ->whereNull('hs.deleted_at');
+                    ->whereNull('hs.deleted_at')
+                    ->where('hs.school_id', $schoolId);
             })
             ->select([
                 'users.*',
@@ -746,14 +822,13 @@ class HomeworkController extends Controller
                 'hs.created_at as submission_created_at',
             ]);
 
-        // Filters
         if ($request->filled('q')) {
             $term = '%'.$request->input('q').'%';
             $query->where(function ($q) use ($term) {
                 $q->where('users.name', 'like', $term)
-                ->orWhere('users.last_name', 'like', $term)
-                ->orWhere('users.roll_number', 'like', $term)
-                ->orWhere('users.email', 'like', $term);
+                  ->orWhere('users.last_name', 'like', $term)
+                  ->orWhere('users.roll_number', 'like', $term)
+                  ->orWhere('users.email', 'like', $term);
             });
         }
         if ($request->filled('created_from')) {
@@ -764,7 +839,7 @@ class HomeworkController extends Controller
         }
 
         $students = $query
-            ->orderByRaw('CASE WHEN hs.id IS NULL THEN 1 ELSE 0 END') // submissions first
+            ->orderByRaw('CASE WHEN hs.id IS NULL THEN 1 ELSE 0 END')
             ->orderBy('users.name')
             ->paginate(20)
             ->appends($request->query());
@@ -783,7 +858,6 @@ class HomeworkController extends Controller
     {
         $submission = HomeworkSubmission::with(['homework'])->findOrFail($submissionId);
 
-        // Ensure teacher is assigned to this homework's class
         abort_unless($this->myClassIds()->contains($submission->homework->class_id), 403);
 
         abort_unless($submission->attachment && Storage::disk('public')->exists($submission->attachment), 404, 'File not found');
@@ -791,140 +865,122 @@ class HomeworkController extends Controller
         return response()->download(Storage::disk('public')->path($submission->attachment));
     }
 
+    /**
+     * Parent: choose child and see child’s homework list.
+     */
+    public function parentChildHomeworkList(Request $request)
+    {
+        $parent = Auth::user();
 
-/**
- * Parent: choose a child (student) and see that child's homework list (by child's class),
- * including whether the child submitted and on-time/late/open status.
- */
-public function parentChildHomeworkList(Request $request)
-{
-    $parent = Auth::user();
+        $children = User::query()
+            ->where('role', 'student')
+            ->where('parent_id', $parent->id)
+            ->whereNotNull('class_id')
+            ->orderBy('name')
+            ->orderBy('last_name')
+            ->get(['id','name','last_name','class_id']);
 
-    // Children for this parent
-    $children = User::query()
-        ->where('role', 'student')
-        ->where('parent_id', $parent->id)
-        ->whereNotNull('class_id')
-        ->orderBy('name')
-        ->orderBy('last_name')     // optional secondary sort
-        ->get(['id','name','last_name','class_id']);
-
-    // Preselect if only one child
-    $selectedStudentId = $request->integer('student_id');
-    if (!$selectedStudentId && $children->count() === 1) {
-        $selectedStudentId = (int) $children->first()->id;
-    }
-
-    $selectedStudent = null;
-    $homeworks      = collect(); // default empty paginator-like collection
-
-    if ($selectedStudentId) {
-        // Ensure the selected student truly belongs to this parent
-        $selectedStudent = $children->firstWhere('id', (int)$selectedStudentId);
-        abort_unless($selectedStudent, 403);
-
-        // Query homework for the child's class; also pull child's submission (if any)
-        $homeworks = Homework::with([
-                'class','subject','creator',
-                'submissions' => fn($q) => $q->where('student_id', $selectedStudentId)
-            ])
-            ->where('class_id', $selectedStudent->class_id)
-            ->orderByDesc('homework_date')->orderByDesc('id')
-            ->paginate(20)
-            ->appends($request->query());
-    }
-
-    return view('parent.homework.child_list', [
-        'header_title'    => 'My Child Homework',
-        'children'        => $children,
-        'selectedStudent' => $selectedStudent,
-        'selectedStudentId'=> $selectedStudentId,
-        'homeworks'       => $homeworks,
-    ]);
-}
-
-/**
- * Parent: download the homework document if any of this parent's children are in that class.
- */
-public function parentChildHomeworkDownload($homeworkId)
-{
-    $parent   = Auth::user();
-    $homework = Homework::findOrFail($homeworkId);
-
-    // Verify this homework belongs to at least one of the parent's children's classes
-    $hasChildInClass = User::where('role','student')
-        ->where('parent_id', $parent->id)
-        ->where('class_id', $homework->class_id)
-        ->exists();
-
-    abort_unless($hasChildInClass, 403);
-    abort_unless($homework->document_file && Storage::disk('public')->exists($homework->document_file), 404, 'File not found');
-
-    return response()->download(Storage::disk('public')->path($homework->document_file));
-}
-
-public function parentChildSubmissionShow(Request $request, $homeworkId, $studentId)
-{
-    $parent   = Auth::user();
-    $student  = User::where('role','student')
-        ->where('id', $studentId)
-        ->where('parent_id', $parent->id)
-        ->firstOrFail();
-
-    $homework = Homework::with(['class','subject','creator'])->findOrFail($homeworkId);
-    abort_unless((int)$student->class_id === (int)$homework->class_id, 403);
-
-    $submission = HomeworkSubmission::where('homework_id', $homework->id)
-        ->where('student_id', $student->id)
-        ->first();
-
-    $due = $homework->submission_date ? $homework->submission_date->endOfDay() : null;
-    $status = 'Not submitted';
-    if ($submission) {
-        if ($due) {
-            $status = ($submission->submitted_at && $submission->submitted_at->gt($due)) ? 'Submitted (Late)' : 'Submitted (On time)';
-        } else {
-            $status = 'Submitted';
+        $selectedStudentId = $request->integer('student_id');
+        if (!$selectedStudentId && $children->count() === 1) {
+            $selectedStudentId = (int) $children->first()->id;
         }
-    } else {
-        $status = $due && now()->gt($due) ? 'Not submitted (Closed)' : 'Not submitted (Open)';
+
+        $selectedStudent = null;
+        $homeworks      = collect();
+
+        if ($selectedStudentId) {
+            $selectedStudent = $children->firstWhere('id', (int)$selectedStudentId);
+            abort_unless($selectedStudent, 403);
+
+            $homeworks = Homework::with([
+                    'class','subject','creator',
+                    'submissions' => fn($q) => $q->where('student_id', $selectedStudentId)
+                ])
+                ->where('class_id', $selectedStudent->class_id)
+                ->orderByDesc('homework_date')->orderByDesc('id')
+                ->paginate(20)
+                ->appends($request->query());
+        }
+
+        return view('parent.homework.child_list', [
+            'header_title'     => 'My Child Homework',
+            'children'         => $children,
+            'selectedStudent'  => $selectedStudent,
+            'selectedStudentId'=> $selectedStudentId,
+            'homeworks'        => $homeworks,
+        ]);
     }
 
-    // for “Back” link: keep selected student on list page
-    $backUrl = route('parent.child.homework.list', ['student_id' => $student->id]);
+    /**
+     * Parent: download the homework document (child must be in that class).
+     */
+    public function parentChildHomeworkDownload($homeworkId)
+    {
+        $parent   = Auth::user();
+        $homework = Homework::findOrFail($homeworkId);
 
-    return view('parent.homework.submission_show', [
-        'header_title' => 'Child Submission',
-        'homework'     => $homework,
-        'student'      => $student,
-        'submission'   => $submission,
-        'status'       => $status,
-        'backUrl'      => $backUrl,
-    ]);
-}
+        $hasChildInClass = User::where('role','student')
+            ->where('parent_id', $parent->id)
+            ->where('class_id', $homework->class_id)
+            ->exists();
 
-/**
- * Parent: download the child’s submission attachment.
- */
-public function parentChildSubmissionDownload($submissionId)
-{
-    $parent     = Auth::user();
-    $submission = HomeworkSubmission::with(['homework','student'])->findOrFail($submissionId);
+        abort_unless($hasChildInClass, 403);
+        abort_unless($homework->document_file && Storage::disk('public')->exists($homework->document_file), 404, 'File not found');
 
-    // Must belong to this parent and homework must align with child’s class
-    abort_unless($submission->student && (int)$submission->student->parent_id === (int)$parent->id, 403);
+        return response()->download(Storage::disk('public')->path($homework->document_file));
+    }
 
-    abort_unless($submission->attachment && Storage::disk('public')->exists($submission->attachment), 404, 'File not found');
+    public function parentChildSubmissionShow(Request $request, $homeworkId, $studentId)
+    {
+        $parent   = Auth::user();
+        $student  = User::where('role','student')
+            ->where('id', $studentId)
+            ->where('parent_id', $parent->id)
+            ->firstOrFail();
 
-    return response()->download(Storage::disk('public')->path($submission->attachment));
-}
+        $homework = Homework::with(['class','subject','creator'])->findOrFail($homeworkId);
+        abort_unless((int)$student->class_id === (int)$homework->class_id, 403);
 
+        $submission = HomeworkSubmission::where('homework_id', $homework->id)
+            ->where('student_id', $student->id)
+            ->first();
 
+        $due = $homework->submission_date ? Carbon::parse($homework->submission_date)->endOfDay() : null;
+        $status = 'Not submitted';
+        if ($submission) {
+            if ($due) {
+                $status = ($submission->submitted_at && Carbon::parse($submission->submitted_at)->gt($due)) ? 'Submitted (Late)' : 'Submitted (On time)';
+            } else {
+                $status = 'Submitted';
+            }
+        } else {
+            $status = $due && now()->gt($due) ? 'Not submitted (Closed)' : 'Not submitted (Open)';
+        }
 
+        $backUrl = route('parent.child.homework.list', ['student_id' => $student->id]);
 
+        return view('parent.homework.submission_show', [
+            'header_title' => 'Child Submission',
+            'homework'     => $homework,
+            'student'      => $student,
+            'submission'   => $submission,
+            'status'       => $status,
+            'backUrl'      => $backUrl,
+        ]);
+    }
 
+    /**
+     * Parent: download the child’s submission attachment.
+     */
+    public function parentChildSubmissionDownload($submissionId)
+    {
+        $parent     = Auth::user();
+        $submission = HomeworkSubmission::with(['homework','student'])->findOrFail($submissionId);
 
+        abort_unless($submission->student && (int)$submission->student->parent_id === (int)$parent->id, 403);
 
+        abort_unless($submission->attachment && Storage::disk('public')->exists($submission->attachment), 404, 'File not found');
 
-
+        return response()->download(Storage::disk('public')->path($submission->attachment));
+    }
 }

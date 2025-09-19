@@ -2,56 +2,111 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ClassSubject;
-use App\Models\ClassModel;
 use App\Models\AssignClassTeacherModel;
+use App\Models\ClassModel;
 use App\Models\User;
-use App\Models\Subject;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-
+use Illuminate\Validation\Rule;
 
 class AssignClassTeacherController extends Controller
 {
-    //
+    /* =======================
+     * Helpers
+     * ======================= */
+    protected function currentSchoolId(): int
+    {
+        return (int) (session('current_school_id') ?: Auth::user()->school_id);
+    }
+
+    /* =======================
+     * Admin side
+     * ======================= */
 
     public function list(Request $request)
     {
-        $data['getRecord'] = AssignClassTeacherModel::getRecord();
+        // Use JOINs + aliases so Blade fields (class_name/teacher_name/created_by_name) exist.
+        $data['getRecord'] = AssignClassTeacherModel::query()
+            ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
+            ->leftJoin('users as t', function ($j) {
+                $j->on('t.id', '=', 'assign_class_teacher.teacher_id')
+                  ->whereNull('t.deleted_at');
+            })
+            ->leftJoin('users as u', function ($j) {
+                $j->on('u.id', '=', 'assign_class_teacher.created_by')
+                  ->whereNull('u.deleted_at');
+            })
+            ->select([
+                'assign_class_teacher.*',
+                'c.name as class_name',
+                't.name as teacher_name',
+                'u.name as created_by_name',
+            ])
+            ->orderByDesc('assign_class_teacher.id')
+            ->paginate(10);
+
         $data['header_title'] = 'Assign Class Teacher List';
         return view('admin.assign_class_teacher.list', $data);
     }
 
     public function add()
     {
-        $data['getClass'] = ClassModel::getClass();
-        $data['getTeachers'] = User::getTeachers();
+        $schoolId = $this->currentSchoolId();
+
+        $data['getClass'] = ClassModel::query()
+            ->select('id','name')
+            ->where('school_id', $schoolId)
+            ->orderBy('name')
+            ->get();
+
+        $data['getTeachers'] = User::query()
+            ->select('id','name','email')
+            ->where('role', 'teacher')
+            ->where('school_id', $schoolId)
+            ->orderBy('name')
+            ->get();
+
         $data['header_title'] = 'Assign Class Teacher';
         return view('admin.assign_class_teacher.add', $data);
     }
 
     public function assignTeacherAdd(Request $request)
     {
+        $schoolId = $this->currentSchoolId();
+
         $request->validate([
-            'class_id'      => 'required|exists:classes,id,deleted_at,NULL',
-            'teacher_id'    => 'required|array|min:1',
-            // ensure each is an active teacher
-            'teacher_id.*'  => 'distinct|exists:users,id,role,teacher,deleted_at,NULL',
-            'status'        => 'required|in:0,1',
+            'class_id'     => [
+                'required',
+                Rule::exists('classes','id')
+                    ->where(fn($q) => $q->where('school_id', $schoolId)->whereNull('deleted_at')),
+            ],
+            'teacher_id'   => ['required','array','min:1'],
+            'teacher_id.*' => [
+                'distinct',
+                Rule::exists('users','id')
+                    ->where(fn($q) => $q->where('role','teacher')
+                                        ->where('school_id', $schoolId)
+                                        ->whereNull('deleted_at')),
+            ],
+            'status'       => ['required', Rule::in([0,1])],
         ]);
 
         foreach ($request->teacher_id as $tid) {
             $row = AssignClassTeacherModel::where('class_id', $request->class_id)
-                ->where('teacher_id', $tid)
+                ->where('teacher_id', (int) $tid)
                 ->first();
 
             if ($row) {
                 $row->status = (int) $request->status;
+                // make sure legacy rows have school_id
+                if (!$row->school_id) {
+                    $row->school_id = $schoolId;
+                }
                 $row->save();
             } else {
                 AssignClassTeacherModel::create([
+                    'school_id'  => $schoolId,                 // ⬅️ ensure school_id
                     'class_id'   => (int) $request->class_id,
                     'teacher_id' => (int) $tid,
                     'status'     => (int) $request->status,
@@ -67,29 +122,60 @@ class AssignClassTeacherController extends Controller
 
     public function assignTeacherEdit($id)
     {
-        $assignTeacher = AssignClassTeacherModel::findOrFail($id);
+        $schoolId = $this->currentSchoolId();
 
-        $data['getClass'] = ClassModel::getClass();
-        $data['getTeachers'] = User::getTeachers();
+        $assignTeacher = AssignClassTeacherModel::with(['class:id,name','teacher:id,name,email'])
+            ->findOrFail($id);
+
+        $data['getClass'] = ClassModel::query()
+            ->select('id','name')
+            ->where('school_id', $schoolId)          // ⬅️ scope
+            ->orderBy('name')
+            ->get();
+
+        $data['getTeachers'] = User::query()
+            ->select('id','name','email')
+            ->where('role', 'teacher')
+            ->where('school_id', $schoolId)          // ⬅️ scope
+            ->orderBy('name')
+            ->get();
+
         $data['selectedTeachers'] = AssignClassTeacherModel::where('class_id', $assignTeacher->class_id)
             ->pluck('teacher_id')
             ->toArray();
+
         $data['assignTeacher'] = $assignTeacher;
-        $data['header_title'] = 'Edit Assigned Class Teacher';
+        $data['header_title']  = 'Edit Assigned Class Teacher';
+
         return view('admin.assign_class_teacher.add', $data);
     }
 
     public function singleTeacherEdit($id)
     {
-        $assignTeacher = AssignClassTeacherModel::findOrFail($id);
+        $schoolId = $this->currentSchoolId();
 
-        $data['getClass'] = ClassModel::getClass();
-        $data['getTeachers'] = User::getTeachers();
+        $assignTeacher = AssignClassTeacherModel::with(['class:id,name','teacher:id,name,email'])
+            ->findOrFail($id);
+
+        $data['getClass'] = ClassModel::query()
+            ->select('id','name')
+            ->where('school_id', $schoolId)          // ⬅️ scope
+            ->orderBy('name')
+            ->get();
+
+        $data['getTeachers'] = User::query()
+            ->select('id','name','email')
+            ->where('role','teacher')
+            ->where('school_id', $schoolId)          // ⬅️ scope
+            ->orderBy('name')
+            ->get();
+
         $data['selectedTeachers'] = AssignClassTeacherModel::where('class_id', $assignTeacher->class_id)
             ->pluck('teacher_id')
             ->toArray();
+
         $data['assignTeacher'] = $assignTeacher;
-        $data['header_title'] = 'Edit Single Class Teacher';
+        $data['header_title']  = 'Edit Single Class Teacher';
         return view('admin.assign_class_teacher.edit_single_teacher', $data);
     }
 
@@ -97,7 +183,6 @@ class AssignClassTeacherController extends Controller
     {
         $assign = AssignClassTeacherModel::findOrFail($id);
 
-        // Only validate & update status
         $request->validate([
             'status' => ['required', Rule::in([0, 1])],
         ]);
@@ -112,28 +197,36 @@ class AssignClassTeacherController extends Controller
 
     public function assignTeacherUpdate(Request $request, $id)
     {
+        $schoolId = $this->currentSchoolId();
+
         $request->validate([
-            'class_id'      => 'required|exists:classes,id,deleted_at,NULL',
-            'teacher_id'    => 'required|array|min:1',
-            'teacher_id.*'  => 'distinct|exists:users,id,role,teacher,deleted_at,NULL',
-            'status'        => ['required', Rule::in([0,1])],
+            'class_id'     => [
+                'required',
+                Rule::exists('classes','id')
+                    ->where(fn($q) => $q->where('school_id', $schoolId)->whereNull('deleted_at')),
+            ],
+            'teacher_id'   => ['required','array','min:1'],
+            'teacher_id.*' => [
+                'distinct',
+                Rule::exists('users','id')
+                    ->where(fn($q) => $q->where('role','teacher')
+                                        ->where('school_id', $schoolId)
+                                        ->whereNull('deleted_at')),
+            ],
+            'status'       => ['required', Rule::in([0,1])],
         ]);
 
-        // Ensure the row exists (and 404 if not)
         AssignClassTeacherModel::findOrFail($id);
 
-        DB::transaction(function () use ($request) {
+        DB::transaction(function () use ($request, $schoolId) {
             $classId = (int) $request->class_id;
             $status  = (int) $request->status;
 
-            // Soft-delete existing assignments for the TARGET class from the form
             AssignClassTeacherModel::where('class_id', $classId)->delete();
 
-            // Recreate/restore the selected teachers
             foreach ($request->teacher_id as $tid) {
                 $tid = (int) $tid;
 
-                // If this pair existed before (even soft-deleted), restore & update
                 $existing = AssignClassTeacherModel::withTrashed()
                     ->where('class_id', $classId)
                     ->where('teacher_id', $tid)
@@ -143,11 +236,15 @@ class AssignClassTeacherController extends Controller
                     if ($existing->trashed()) {
                         $existing->restore();
                     }
+                    if (!$existing->school_id) {
+                        $existing->school_id = $schoolId; // ⬅️ safeguard
+                    }
                     $existing->status     = $status;
                     $existing->created_by = $existing->created_by ?? Auth::id();
                     $existing->save();
                 } else {
                     AssignClassTeacherModel::create([
+                        'school_id'  => $schoolId,  // ⬅️ ensure school_id
                         'class_id'   => $classId,
                         'teacher_id' => $tid,
                         'status'     => $status,
@@ -165,7 +262,7 @@ class AssignClassTeacherController extends Controller
     public function assignTeacherDelete(Request $request)
     {
         $request->validate([
-            'id' => 'required|exists:assign_class_teacher,id',
+            'id' => ['required', Rule::exists('assign_class_teacher','id')],
         ]);
 
         $assignTeacher = AssignClassTeacherModel::findOrFail((int) $request->id);
@@ -176,8 +273,9 @@ class AssignClassTeacherController extends Controller
             ->with('success', 'Class teacher assignment deleted successfully.');
     }
 
-
-    /// Teacher Side ( My Class & Subject)
+    /* =======================
+     * Teacher side
+     * ======================= */
 
     public function myClassSubject()
     {
@@ -186,7 +284,7 @@ class AssignClassTeacherController extends Controller
             return redirect()->route('admin.login.page')->with('error', 'Unauthorized access.');
         }
 
-        $data['getRecord'] = AssignClassTeacherModel::getMyClassSubject(Auth::id()); // ← fixed name
+        $data['getRecord']    = AssignClassTeacherModel::getMyClassSubject($user->id);
         $data['header_title'] = 'My Class & Subjects';
 
         return view('teacher.my_class_subject', $data);
@@ -195,11 +293,11 @@ class AssignClassTeacherController extends Controller
     public function myStudent(Request $request)
     {
         $teacherId = Auth::id();
-        $classId   = $request->integer('class_id', 0) ?: null; // fallback to null
+        $classId   = $request->integer('class_id', 0) ?: null;
 
         $data['header_title'] = 'My Students';
-        $data['classes']   = AssignClassTeacherModel::getTeacherClasses($teacherId);
-        $data['getRecord'] = AssignClassTeacherModel::getMyStudents($teacherId, $classId, 10);
+        $data['classes']      = AssignClassTeacherModel::getTeacherClasses($teacherId);
+        $data['getRecord']    = AssignClassTeacherModel::getMyStudents($teacherId, $classId, 10);
 
         return view('teacher.my_student', $data);
     }

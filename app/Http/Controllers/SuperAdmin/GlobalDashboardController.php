@@ -10,18 +10,20 @@ class GlobalDashboardController extends Controller
 {
     public function index()
     {
-        $totals = [
-            'schools'        => School::count(),
-            'active_schools' => School::where('status', 1)->count(),
-            'users'          => User::withoutGlobalScopes()->count(),
-            'admins'         => User::withoutGlobalScopes()->where('role', 'admin')->count(),
-            'teachers'       => User::withoutGlobalScopes()->where('role', 'teacher')->count(),
-            'students'       => User::withoutGlobalScopes()->where('role', 'student')->count(),
-            'parents'        => User::withoutGlobalScopes()->where('role', 'parent')->count(),
+        $stats = [
+            'header_title' => 'Global Dashboard',
+            'schools_total'    => \App\Models\School::count(),
+            'schools_active'   => \App\Models\School::where('status',1)->count(),
+            'schools_inactive' => \App\Models\School::where('status',0)->count(),
+            'users_total' => \App\Models\User::count(),
+            'admins'   => \App\Models\User::where('role','admin')->count(),
+            'teachers' => \App\Models\User::where('role','teacher')->count(),
+            'students' => \App\Models\User::where('role','student')->count(),
+            'parents'  => \App\Models\User::where('role','parent')->count(),
         ];
 
-        $schools = School::orderBy('name')->get();
+        $recentSchools = \App\Models\School::latest()->take(8)->get();
 
-        return view('superadmin.dashboard', compact('totals', 'schools'));
+        return view('superadmin.dashboard', compact('stats','recentSchools'));
     }
 }
