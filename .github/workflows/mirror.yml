@@ -17,6 +17,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false  # GITHUB_TOKEN ব্যবহার করবে না
+          
 
       - name: Remove GitHub extraheader if any
         run: git config --global --unset-all http.https://github.com/.extraheader || true
