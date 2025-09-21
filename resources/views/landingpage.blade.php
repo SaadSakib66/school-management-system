@@ -258,6 +258,7 @@
         </div>
       </div>
 
+      
       <div class="accordion-item">
         <h2 class="accordion-header" id="q2">
           <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#a2">
@@ -314,7 +315,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   // Smooth anchor scroll
-  
+
   document.querySelectorAll('a[href^="#"]').forEach(a=>{
     a.addEventListener('click', e=>{
       const id = a.getAttribute('href');
