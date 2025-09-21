@@ -8,12 +8,15 @@ on:
 jobs:
   mirror:
     runs-on: ubuntu-latest
+    env:
+      MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}  # Settings → Secrets → Actions এ সেট করা PAT
+
     steps:
       - name: Checkout full history (no creds)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false  # GITHUB_TOKEN বাদ
+          persist-credentials: false  # GITHUB_TOKEN ব্যবহার করবে না
 
       - name: Remove GitHub extraheader if any
         run: git config --global --unset-all http.https://github.com/.extraheader || true
@@ -24,18 +27,18 @@ jobs:
           git config user.email "mirror@example.com"
 
       - name: "Sanity: MIRROR_TOKEN present?"
-        env:
-          TOKEN: ${{ secrets.MIRROR_TOKEN }}
         run: |
-          if [ -z "$TOKEN" ]; then echo "MIRROR_TOKEN missing"; exit 1; fi
+          if [ -z "$MIRROR_TOKEN" ]; then echo "MIRROR_TOKEN missing"; exit 1; fi
           echo "MIRROR_TOKEN is set"
 
-      - name: Push to mirror (HTTPS with PAT)
-        env:
-          TOKEN: ${{ secrets.MIRROR_TOKEN }}   # barabd classic PAT (repo+workflow)
+      - name: Push to mirror (force mirror all branches & tags)
         run: |
           set -euxo pipefail
           git remote remove mirror || true
-          git remote add mirror https://barabd:${TOKEN}@github.com/barabd/school-management-system.git
-          git push mirror --all
-          git push mirror --tags
+          git remote add mirror https://barabd:${MIRROR_TOKEN}@github.com/barabd/school-management-system.git
+
+          # সব ব্রাঞ্চ force + prune করে mirror এ পাঠান (one-to-one refs)
+          git push mirror --force --prune refs/heads/*:refs/heads/*
+
+          # সব ট্যাগ force + prune করে পাঠান
+          git push mirror --force --prune --tags
