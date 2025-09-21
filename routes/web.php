@@ -26,6 +26,7 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\CommunicateController;
 use App\Http\Controllers\HomeworkController;
 use App\Http\Controllers\HomeworkReportController;
+use App\Http\Controllers\LandingpageController;
 
 /*
 |--------------------------------------------------------------------------
@@ -36,8 +37,7 @@ use App\Http\Controllers\HomeworkReportController;
 // Shortcut to admin login
 Route::redirect('/admin', '/admin/login')->name('admin.root');
 
-// Public welcome
-Route::get('/', fn () => view('welcome'));
+Route::get('/', [LandingpageController::class, 'index'])->name('landing');
 
 /*
 |--------------------------------------------------------------------------
