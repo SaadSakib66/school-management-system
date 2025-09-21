@@ -18,7 +18,7 @@ class DashboardController extends Controller
                 // If super admin has selected a school, show the admin dashboard
                 $schoolId = session('current_school_id');
                 if ($schoolId) {
-                    $data['acting_school'] = School::find($schoolId); // optional for header/breadcrumbs
+                    $data['acting_school'] = School::find($schoolId);
                     return view('admin.dashboard', $data);
                 }
                 // No school selected → go to super admin dashboard
