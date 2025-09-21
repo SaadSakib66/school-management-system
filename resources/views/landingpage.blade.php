@@ -48,7 +48,7 @@
   <div class="container">
     <a class="navbar-brand d-flex align-items-center gap-2" href="{{ route('landing') }}">
       {{-- <img src="" class="rounded-circle" width="28" height="28" alt=""> --}}
-      <strong>Barabd School Management Software</strong>
+      <strong>Barabd Education Management Software</strong>
     </a>
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topnav">
@@ -59,12 +59,11 @@
       <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
         <li class="nav-item"><a class="nav-link" href="#features">Features</a></li>
         <li class="nav-item"><a class="nav-link" href="#modules">Modules</a></li>
-        <li class="nav-item"><a class="nav-link" href="#pricing">Pricing</a></li>
         <li class="nav-item"><a class="nav-link" href="#faq">FAQ</a></li>
       </ul>
       <div class="d-flex ms-lg-3">
         <a href="{{ route('admin.login.page') }}" class="btn btn-outline-blue me-2">Sign in</a>
-        <a href="{{ route('admin.login.page') }}" class="btn btn-blue">Get Started</a>
+        <a href="{{ route('admin.login.page') }}" class="btn btn-blue text-white">Get Started</a>
       </div>
     </div>
   </div>
@@ -81,7 +80,7 @@
           attendance, homework, marks, fees and more.
         </p>
         <div class="d-flex flex-wrap gap-3 mt-4">
-          <a href="{{ route('admin.login.page') }}" class="btn btn-blue btn-lg"><i class="bi bi-box-arrow-in-right me-1"></i> Go to Portal</a>
+          <a href="{{ route('admin.login.page') }}" class="btn btn-blue btn-lg text-white"><i class="bi bi-box-arrow-in-right me-1 text-white"></i> Go to Portal</a>
           <a href="#features" class="btn btn-outline-light btn-lg"><i class="bi bi-search me-1"></i> Explore Features</a>
         </div>
         <p class="text-white-50 small mt-3">Role-based access: Admin • Teacher • Student • Parent</p>
@@ -186,14 +185,14 @@
     </div>
 
     <div class="mt-4">
-      <a href="{{ route('admin.login.page') }}" class="btn btn-blue btn-lg">
+      <a href="{{ route('admin.login.page') }}" class="btn btn-blue btn-lg text-white">
         Enter Portal <i class="bi bi-arrow-right-short"></i>
       </a>
     </div>
   </div>
 </section>
 
-<section id="pricing" class="py-6 py-lg-7" style="margin-top: 40px;">
+{{-- <section id="pricing" class="py-6 py-lg-7" style="margin-top: 40px;">
   <div class="container">
     <h2 class="h3 fw-bold">Simple pricing</h2>
     <p class="text-muted">Use as-is or customize for your institution.</p>
@@ -239,7 +238,7 @@
       </div>
     </div>
   </div>
-</section>
+</section> --}}
 
 <section id="faq" class="py-6 py-lg-7" style="margin: 40px;">
   <div class="container">
