@@ -253,12 +253,12 @@
         </h2>
         <div id="a1" class="accordion-collapse collapse show" data-bs-parent="#faqAcc">
           <div class="accordion-body">
-            Built with Laravel best practices, CSRF protection, hashed passwords and role-based authorization.
+            Built with Laravel best practices, CSRF protection, hashed passwords and role-based authorization. Your datas are safe with us.
           </div>
         </div>
       </div>
 
-      
+
       <div class="accordion-item">
         <h2 class="accordion-header" id="q2">
           <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#a2">
