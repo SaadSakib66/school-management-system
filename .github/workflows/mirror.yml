@@ -7,27 +7,24 @@ on:
 
 jobs:
   mirror:
+    if: ${{ github.repository == 'SaadSakib66/school-management-system' }}
     runs-on: ubuntu-latest
     env:
-      MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}  # Settings → Secrets → Actions এ সেট করা PAT
+      MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
 
     steps:
-      - name: Checkout full history (no creds)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false  # GITHUB_TOKEN ব্যবহার করবে না
-          
+          persist-credentials: false
 
-      - name: Remove GitHub extraheader if any
-        run: git config --global --unset-all http.https://github.com/.extraheader || true
+      - run: git config --global --unset-all http.https://github.com/.extraheader || true
 
-      - name: Configure git
-        run: |
+      - run: |
           git config user.name "Mirror Bot"
           git config user.email "mirror@example.com"
 
-      - name: "Sanity: MIRROR_TOKEN present?"
+      - name: Sanity: MIRROR_TOKEN present?
         run: |
           if [ -z "$MIRROR_TOKEN" ]; then echo "MIRROR_TOKEN missing"; exit 1; fi
           echo "MIRROR_TOKEN is set"
@@ -37,9 +34,5 @@ jobs:
           set -euxo pipefail
           git remote remove mirror || true
           git remote add mirror https://barabd:${MIRROR_TOKEN}@github.com/barabd/school-management-system.git
-
-          # সব ব্রাঞ্চ force + prune করে mirror এ পাঠান (one-to-one refs)
           git push mirror --force --prune refs/heads/*:refs/heads/*
-
-          # সব ট্যাগ force + prune করে পাঠান
           git push mirror --force --prune --tags
