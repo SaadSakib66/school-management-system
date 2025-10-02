@@ -23,7 +23,7 @@
                 <div class="col-md-8">
                     <div class="card card-primary card-outline mb-4">
 
-                        <form action="{{ route('admin.update-account') }}" method="POST" enctype="multipart/form-data">
+                        <form action="{{ route('superadmin.update-account') }}" method="POST" enctype="multipart/form-data">
                             @csrf
 
                         <div class="card-body">

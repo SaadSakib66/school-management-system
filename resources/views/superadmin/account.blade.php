@@ -7,7 +7,7 @@
             <div class="row">
                 <div class="col-sm-6"><h3 class="mb-0">{{ $header_title }}</h3></div>
                 <div class="col-sm-6 text-end">
-                    <a href="{{ route('admin.edit-account', $user->id) }}" class="btn btn-primary btn-sm">
+                    <a href="{{ route('superadmin.edit-account', $user->id) }}" class="btn btn-primary btn-sm">
                         Edit Profile
                     </a>
                 </div>
@@ -60,7 +60,7 @@
                             </div>
                         </div>
                         <div class="card-footer text-end">
-                            <a href="{{ route('admin.edit-account', $user->id) }}" class="btn btn-warning">
+                            <a href="{{ route('superadmin.edit-account', $user->id) }}" class="btn btn-warning">
                                 Edit Profile / Change Password
                             </a>
                         </div>
