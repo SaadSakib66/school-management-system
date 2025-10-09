@@ -27,13 +27,15 @@ use App\Http\Controllers\CommunicateController;
 use App\Http\Controllers\HomeworkController;
 use App\Http\Controllers\HomeworkReportController;
 use App\Http\Controllers\LandingpageController;
+use App\Http\Controllers\Admin\FeeStructureController;
+use App\Http\Controllers\Admin\FeeInvoiceController;
+use App\Http\Controllers\Admin\FeeReportController;
 
 /*
 |--------------------------------------------------------------------------
 | Web Routes
 |--------------------------------------------------------------------------
 */
-
 // Shortcut to admin login
 Route::redirect('/admin', '/admin/login')->name('admin.root');
 
@@ -102,6 +104,9 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::post('update/{id}',      [AdminController::class, 'updateAdmin'])->name('admin.admin.update-admin');
     Route::post('delete',           [AdminController::class, 'deleteAdmin'])->name('admin.admin.delete-admin');
 
+    // NEW: PDF download (dompdf)
+    Route::get('admins/download/{id}/{slug?}', [AdminController::class, 'downloadAdmin'])->name('admin.admin.download');
+
     // Students
     Route::get('student/list',                 [StudentController::class, 'list'])->name('admin.student.list');
     Route::get('student/create',               [StudentController::class, 'add'])->name('admin.student.add');
@@ -109,6 +114,8 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::get('student/edit/{id}',            [StudentController::class, 'edit'])->name('admin.student.edit-student');
     Route::post('student/update/{id}',         [StudentController::class, 'update'])->name('admin.student.update-student'); // ✅ fixed route name
     Route::post('student/delete',              [StudentController::class, 'delete'])->name('admin.student.delete-student');
+    // NEW: PDF (tab title friendly with optional slug)
+    Route::get('students/download/{id}/{slug?}', [StudentController::class, 'download'])->name('admin.student.download');
 
     // Parents
     Route::get('parent/list',                  [ParentController::class, 'list'])->name('admin.parent.list');
@@ -120,6 +127,8 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::get('parent/add-my-student/{id}',   [ParentController::class, 'addMyStudent'])->name('admin.parent.add-my-student');
     Route::post('parent/assign-student',       [ParentController::class, 'assignStudent'])->name('admin.parent.assign-student');
     Route::post('parent/remove-student',       [ParentController::class, 'removeStudent'])->name('admin.parent.remove-student');
+    // NEW: PDF download route (slug makes the browser tab show a nice name)
+    Route::get('parents/download/{id}/{slug?}',  [ParentController::class, 'download'])->name('admin.parent.download');
 
     // Teachers
     Route::get('teacher/list',                 [TeacherController::class, 'list'])->name('admin.teacher.list');
@@ -128,6 +137,8 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::get('teacher/edit/{id}',            [TeacherController::class, 'edit'])->name('admin.teacher.edit-teacher');
     Route::post('teacher/update/{id}',         [TeacherController::class, 'update'])->name('admin.teacher.update-teacher');
     Route::post('teacher/delete',              [TeacherController::class, 'delete'])->name('admin.teacher.delete-teacher');
+    // NEW: PDF download; slug makes the browser tab show the name
+    Route::get('teachers/download/{id}/{slug?}', [TeacherController::class, 'download'])->name('admin.teacher.download');
 
     // Classes
     Route::get('class/list',                   [ClassController::class, 'classList'])->name('admin.class.list');
@@ -154,6 +165,7 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::post('assign_subject/edit_single/{id}',     [ClassSubjectController::class, 'updateSingleEdit'])->name('admin.assign-subject.update-single-subject');
     Route::post('assign_subject/update/{id}',          [ClassSubjectController::class, 'assignSubjectUpdate'])->name('admin.assign-subject.update-subject');
     Route::post('assign_subject/delete',               [ClassSubjectController::class, 'assignSubjectDelete'])->name('admin.assign-subject.delete-subject');
+    Route::get('admin/assign-subject/download',        [ClassSubjectController::class, 'download'])->name('admin.assign-subject.download');
 
     // Assign Class Teacher
     Route::get('assign_class_teacher/list',                    [AssignClassTeacherController::class, 'list'])->name('admin.assign-class-teacher.list');
@@ -164,6 +176,8 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::post('assign_class_teacher/edit-single-teacher/{id}',[AssignClassTeacherController::class, 'singleTeacherUpdate'])->name('admin.assign-class-teacher.update-single-teacher');
     Route::post('assign_class_teacher/update-teacher/{id}',    [AssignClassTeacherController::class, 'assignTeacherUpdate'])->name('admin.assign-class-teacher.update_teacher');
     Route::post('assign_class_teacher/delete',                 [AssignClassTeacherController::class, 'assignTeacherDelete'])->name('admin.assign-class-teacher.delete_teacher');
+    // NEW: PDF download
+    Route::get('admin/assign-class-teacher/download',          [AssignClassTeacherController::class, 'download'])->name('admin.assign-class-teacher.download');
 
     // My account (admin)
     Route::get('account',        [UserController::class, 'myAccount'])->name('admin.account');
@@ -173,7 +187,10 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     // Class Timetable
     Route::get('class_timetable/list',     [ClassTimetableController::class, 'list'])->name('admin.class-timetable.list');
     Route::post('class_timetable/save',    [ClassTimetableController::class,'save'])->name('admin.class-timetable.save');
-    Route::get('class_timetable/subjects/{class}', [ClassTimetableController::class,'subjectsForClass'])->name('admin.class-timetable.subjects');
+    // use {class_id} instead of {class}
+    Route::get('class_timetable/subjects/{class_id}', [ClassTimetableController::class, 'subjectsForClass'])->name('admin.class-timetable.subjects');
+    // NEW: PDF download
+    Route::get('class_timetable/download', [ClassTimetableController::class, 'download'])->name('admin.class-timetable.download');
 
     // Exams
     Route::get('exam/list',                [ExamController::class, 'list'])->name('admin.exam.list');
@@ -187,10 +204,13 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::get('exam_schedule/list',       [ExamScheduleController::class, 'list'])->name('admin.exam-schedule.list');
     Route::post('exam_schedule/save',      [ExamScheduleController::class, 'save'])->name('admin.exam-schedule.save');
     Route::get('exam_schedule/subjects/{class}', [ClassTimetableController::class,'subjectsForClass'])->name('admin.exam-schedule.subjects');
+    // NEW: PDF view (inline)
+    Route::get('exam_schedule/download',   [ExamScheduleController::class, 'download'])->name('admin.exam-schedule.download');
 
     // Marks Register
     Route::get('marks_register/list',      [MarksRegisterController::class, 'list'])->name('admin.marks-register.list');
     Route::post('marks_register/save',     [MarksRegisterController::class, 'save'])->name('admin.marks-register.save');
+    Route::get('marks_register/students/{class}', [MarksRegisterController::class, 'studentsForClass'])->name('admin.marks-register.students'); // JSON
 
     // Marks Grade
     Route::get('marks_grade/list',         [MarksGradeController::class, 'list'])->name('admin.marks-grade.list');
@@ -199,11 +219,14 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::get('marks_grade/edit/{id}',    [MarksGradeController::class, 'editGrade'])->name('admin.marks-grade.edit-grade');
     Route::post('marks_grade/update/{id}', [MarksGradeController::class, 'updateGrade'])->name('admin.marks-grade.update-grade');
     Route::post('marks_grade/delete',      [MarksGradeController::class, 'deleteGrade'])->name('admin.marks-grade.delete-grade');
+    // NEW: download (PDF) – supports whole class or single student
+    Route::get('marks-register/download', [MarksRegisterController::class, 'download'])->name('admin.marks-register.download');
 
     // Attendance (admin)
     Route::get('student_attendance',        [AttendanceController::class, 'studentAttendance'])->name('admin.student-attendance.view');
     Route::post('student_attendance/save',  [AttendanceController::class, 'saveStudentAttendance'])->name('admin.student-attendance.save');
     Route::get('attendance_report',         [AttendanceController::class, 'attendanceReport'])->name('admin.attendance-report.view');
+    Route::get('attendance/report/download', [AttendanceController::class, 'attendanceReportDownload'])->name('admin.attendance-report.download');
 
     // Communicate
     Route::get('notice_board',                 [CommunicateController::class, 'noticeBoardList'])->name('admin.notice-board.list');
@@ -212,6 +235,8 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::put('notice_board/update/{id}',     [CommunicateController::class, 'UpdateNoticeBoard'])->name('admin.notice-board.update');
     Route::post('notice_board/store',          [CommunicateController::class, 'StoreNoticeBoard'])->name('admin.notice-board.store');
     Route::delete('notice_board/{id}',         [CommunicateController::class, 'DestroyNoticeBoard'])->name('admin.notice-board.destroy');
+    // NEW: download route (slug is optional, just for pretty URL)
+    Route::get('notice-board/{id}/{slug?}/download', [CommunicateController::class, 'downloadNotice'])->whereNumber('id')->name('admin.notice-board.download');
 
     // Email
     Route::get('send-email',               [CommunicateController::class, 'emailForm'])->name('admin.email.form');
@@ -239,6 +264,33 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::get('homework_report',                                            [HomeworkReportController::class, 'index'])->name('admin.homework.report');
     Route::get('homework_report/homework/{homework}/download',              [HomeworkReportController::class, 'downloadHomework'])->name('admin.homework.report.download.homework');
     Route::get('homework_report/submission/{submission}/download',          [HomeworkReportController::class, 'downloadSubmission'])->name('admin.homework.report.download.submission');
+
+
+    Route::prefix('fees')->name('admin.fees.')->group(function () {
+        // Fee Structure
+        Route::get('structures', [FeeStructureController::class, 'index'])->name('structures.index');
+        Route::get('structures/create', [FeeStructureController::class, 'create'])->name('structures.create');
+        Route::post('structures', [FeeStructureController::class, 'store'])->name('structures.store');
+        Route::get('structures/{id}/edit', [FeeStructureController::class, 'edit'])->name('structures.edit');
+        Route::put('structures/{id}', [FeeStructureController::class, 'update'])->name('structures.update');
+        Route::delete('structures/{id}', [FeeStructureController::class, 'destroy'])->name('structures.destroy');
+
+        // Invoices
+        Route::get('invoices', [FeeInvoiceController::class, 'index'])->name('invoices.index');
+        Route::get('invoices/generate', [FeeInvoiceController::class, 'generateForm'])->name('invoices.generate.form');
+        Route::post('invoices/generate', [FeeInvoiceController::class, 'generate'])->name('invoices.generate');
+        Route::get('invoices/{id}', [FeeInvoiceController::class, 'show'])->name('invoices.show');
+
+        // Payments (manual collection)
+        Route::post('invoices/{id}/payments', [FeeInvoiceController::class, 'storePayment'])->name('invoices.payments.store');
+        Route::delete('payments/{paymentId}', [FeeInvoiceController::class, 'deletePayment'])->name('payments.delete');
+
+        // Reports
+        Route::get('reports/class-monthly', [FeeReportController::class, 'classMonthly'])->name('reports.class-monthly');
+        Route::get('reports/student-statement', [FeeReportController::class, 'studentStatement'])->name('reports.student-statement');
+    });
+
+
 });
 
 /*
@@ -258,19 +310,26 @@ Route::prefix('teacher')->middleware(['auth', 'teacher', 'school.active'])->grou
     Route::get('my_class_subject', [AssignClassTeacherController::class, 'myClassSubject'])->name('teacher.my-class-subject');
     Route::get('my_student',       [AssignClassTeacherController::class, 'myStudent'])->name('teacher.my-student');
 
-    // Timetables
+    // Class Timetables
     Route::get('my_timetable',        [ClassTimetableController::class, 'teacherTimetable'])->name('teacher.my-timetable');
+    Route::get('my_timetable/download', [ClassTimetableController::class, 'teacherDownload'])->name('teacher.my-timetable.download'); // NEW
+
+    // Exam Timetables
     Route::get('my_exam_timetable',   [ExamScheduleController::class, 'teacherExamTimetable'])->name('teacher.my-exam-timetable');
     Route::get('my_exam_timetable/exams/{class}', [ExamScheduleController::class, 'examsForClass'])->name('teacher.my-exam-timetable.exams');
+    Route::get('my_exam_timetable/download',              [ExamScheduleController::class, 'teacherExamTimetableDownload'])->name('teacher.my-exam-timetable.download'); // NEW
 
     // Marks Register
     Route::get('marks_register/list',  [MarksRegisterController::class, 'teacherMarkRegisterList'])->name('teacher.marks-register.list');
     Route::post('marks_register/save', [MarksRegisterController::class, 'teacherMarkRegisterSave'])->name('teacher.marks-register.save');
+    Route::get('marks_register/students/{class}', [MarksRegisterController::class, 'teacherStudentsForClass'])->name('teacher.marks-register.students');
+    Route::get('marks_register/download', [MarksRegisterController::class, 'teacherDownload'])->name('teacher.marks-register.download');
 
     // Attendance
     Route::get('student_attendance',        [AttendanceController::class, 'teacherAttendance'])->name('teacher.student-attendance.view');
     Route::post('student_attendance/save',  [AttendanceController::class, 'teacherAttendanceSave'])->name('teacher.student-attendance.save');
-    Route::get('attendance_report',         [AttendanceController::class, 'teacherAttendanceReport'])->name('teacher.attendance-report.view'); // ✅ removed duplicate "teacher/" in URI
+    Route::get('attendance_report',         [AttendanceController::class, 'teacherAttendanceReport'])->name('teacher.attendance-report.view');
+    Route::get('attendance/report/download', [AttendanceController::class, 'teacherAttendanceReportDownload'])->name('teacher.attendance-report.download'); // NEW
 
     // Notices & Inbox
     Route::get('my_notice_board', [CommunicateController::class,'teacherNotices'])->name('teacher.notice-board');
@@ -297,6 +356,7 @@ Route::prefix('teacher')->middleware(['auth', 'teacher', 'school.active'])->grou
 */
 Route::prefix('student')->middleware(['auth', 'student', 'school.active'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'dashboard'])->name('student.dashboard');
+    // Route::get('my-fees', [\App\Http\Controllers\Student\MyFeesController::class, 'index'])->name('student.fees.index');
 
     // Account
     Route::get('account',         [UserController::class, 'myAccount'])->name('student.account');
@@ -307,10 +367,14 @@ Route::prefix('student')->middleware(['auth', 'student', 'school.active'])->grou
     Route::get('my_timetable',       [ClassTimetableController::class, 'myTimetablelist'])->name('student.my-timetable');
     Route::get('my_exam_timetable',  [ExamScheduleController::class, 'studentExamTimetable'])->name('student.my-exam-timetable');
     Route::get('my_calendar',        [CalendarController::class, 'myCalendar'])->name('student.my-calendar');
+    Route::get('calendar/download', [CalendarController::class,'downloadClassRoutine'])->name('student.calendar.download');
     Route::get('my_exam_calendar',   [CalendarController::class, 'myExamCalendar'])->name('student.my-exam-calendar');
+    Route::get('exam-calendar/download', [CalendarController::class,'downloadExamSchedule'])->name('student.exam-calendar.download');
+
 
     // Marks
     Route::get('marks_register/list',[MarksRegisterController::class, 'studentMarkRegisterList'])->name('student.marks-register.list');
+    Route::get('student/marks-register/download', [MarksRegisterController::class, 'studentResultDownload'])->name('student.marks-register.download');
 
     // Attendance
     Route::get('attendance', [AttendanceController::class, 'studentMonthlyAttendance'])->name('student.attendance.month');

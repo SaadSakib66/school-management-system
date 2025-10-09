@@ -13,7 +13,6 @@
 
     </div>
 
-
     <div class="app-content">
 
         <div class="container-fluid">
@@ -23,7 +22,7 @@
                 <div class="col-md-8">
                     <div class="card card-primary card-outline mb-4">
 
-                        <form action="{{ isset($user) ? route('admin.admin.update-student', $user->id) : route('admin.student.add-student') }}" method="POST" enctype="multipart/form-data">
+                        <form action="{{ isset($user) ? route('admin.student.update-student', $user->id) : route('admin.student.add-student') }}" method="POST" enctype="multipart/form-data">
                             @csrf
 
                         <div class="card-body">

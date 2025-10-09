@@ -1,4 +1,4 @@
-@extends('admin.layout.layout') {{-- reuse your admin layout --}}
+@extends('admin.layout.layout')
 @section('content')
 
 <main class="app-main">
@@ -44,9 +44,20 @@
                       @endforeach
                     </select>
                   </div>
-                  <div class="col-md-6">
+
+                  <div class="col-md-6 d-flex gap-2">
                     <button type="submit" class="btn btn-primary">Show</button>
+
                     <a href="{{ route('student.my-exam-timetable') }}" class="btn btn-success">Reset</a>
+
+                    {{-- Download beside Reset (opens PDF in new tab). Uses current select value. --}}
+                    <button type="submit"
+                            class="btn btn-danger"
+                            formaction="{{ route('student.exam-calendar.download') }}"
+                            formmethod="GET"
+                            formtarget="_blank">
+                      Download Exam Schedule
+                    </button>
                   </div>
                 </form>
               @endif
@@ -80,9 +91,7 @@
                     @forelse($rows as $row)
                       <tr>
                         <td>{{ $row->subject?->name ?? '—' }}</td>
-                        <td>
-                          {{ $row->exam_date ? \Carbon\Carbon::parse($row->exam_date)->format('d-m-Y') : '—' }}
-                        </td>
+                        <td>{{ $row->exam_date ? \Carbon\Carbon::parse($row->exam_date)->format('d-m-Y') : '—' }}</td>
                         <td>{{ $row->start_time ? \Carbon\Carbon::parse($row->start_time)->format('h:i A') : '—' }}</td>
                         <td>{{ $row->end_time ? \Carbon\Carbon::parse($row->end_time)->format('h:i A') : '—' }}</td>
                         <td>{{ $row->room_number ?? '—' }}</td>

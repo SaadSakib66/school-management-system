@@ -43,4 +43,9 @@ class Subject extends Model
             ->wherePivotNull('deleted_at')
             ->wherePivot('status', 1);
     }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }

@@ -44,6 +44,15 @@
                 <div class="col-md-6">
                   <button type="submit" class="btn btn-primary">Search</button>
                   <a href="{{ route('student.marks-register.list') }}" class="btn btn-success">Reset</a>
+                    {{-- NEW: Download Result (opens in new tab) --}}
+                  <button type="submit"
+                        class="btn btn-danger"
+                        formaction="{{ route('student.marks-register.download') }}"
+                        formmethod="GET"
+                        formtarget="_blank">
+                    Download Result
+                  </button>
+                  
                 </div>
               </form>
             </div>

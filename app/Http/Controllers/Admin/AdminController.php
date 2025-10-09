@@ -9,6 +9,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class AdminController extends Controller
 {
@@ -101,28 +104,94 @@ class AdminController extends Controller
     /** ---------- Admin management (school-scoped) ---------- */
 
     /** List admins for the current school context */
-    public function list()
+    public function list(Request $request)
     {
         $schoolId = $this->currentSchoolId();
         if (! $schoolId) {
-            // Super admin without context – send to school switcher
             if ($this->isSuperAdmin()) {
-                return redirect()
-                    ->route('superadmin.schools.switch')
+                return redirect()->route('superadmin.schools.switch')
                     ->with('error', 'Please select a school first.');
             }
             abort(403, 'No school context.');
         }
 
-        $data['getRecord'] = User::query()
+        $query = User::query()
             ->where('role', 'admin')
-            ->where('school_id', $schoolId)
-            ->orderByDesc('id')
-            ->paginate(10);
+            ->where('school_id', $schoolId);
 
+        // 🔍 Filters
+        if ($request->filled('name')) {
+            $query->where('name', 'like', '%' . $request->name . '%');
+        }
+        if ($request->filled('email')) {
+            $query->where('email', 'like', '%' . $request->email . '%');
+        }
+        if ($request->filled('role')) {
+            $query->where('role', $request->role);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', (int)$request->status);
+        }
+
+        $data['getRecord'] = $query->orderByDesc('id')->paginate(10)->appends($request->all());
         $data['header_title'] = 'Admin List';
+
         return view('admin.admin.list', $data);
     }
+
+
+    public function downloadAdmin($id)
+    {
+        $schoolId = $this->currentSchoolId();
+        if (!$schoolId) abort(403, 'No school context.');
+
+        $user = \App\Models\User::where('id', $id)
+            ->where('role', 'admin')
+            ->where('school_id', $schoolId)
+            ->firstOrFail();
+
+        // ---------- normalize photo path & embed ----------
+        $photoSrc  = null;
+        $photoFile = $user->admin_photo ?? $user->profile_pic ?? null;   // column you use
+
+        if ($photoFile) {
+            // Remove any leading public/ or storage/ from DB value
+            $normalized = ltrim(str_replace(['public/', 'storage/'], '', $photoFile), '/');
+
+            // If it already starts with admin_photos/, keep it; else prepend it
+            if (!Str::startsWith($normalized, 'admin_photos/')) {
+                $normalized = 'admin_photos/' . $normalized;
+            }
+
+            if (Storage::disk('public')->exists($normalized)) {
+                $bin = Storage::disk('public')->get($normalized);
+
+                // Detect mime safely
+                $mime = 'image/jpeg';
+                if (class_exists(\finfo::class)) {
+                    $fi   = new \finfo(FILEINFO_MIME_TYPE);
+                    $det  = $fi->buffer($bin);
+                    if ($det) $mime = $det;
+                } else {
+                    $ext = strtolower(pathinfo($normalized, PATHINFO_EXTENSION));
+                    $map = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp'];
+                    if (isset($map[$ext])) $mime = $map[$ext];
+                }
+
+                $photoSrc = 'data:' . $mime . ';base64,' . base64_encode($bin);
+            }
+        }
+        // --------------------------------------------------
+
+        $data = ['user' => $user, 'photoSrc' => $photoSrc];
+
+        $fileName = Str::slug($user->name ?: 'admin') . '.pdf';
+
+        $pdf = Pdf::loadView('pdf.admin_profile', $data)->setPaper('A4', 'portrait');
+
+        return $pdf->stream($fileName, ['Attachment' => false]);
+    }
+
 
     /** Show create form */
     public function add()

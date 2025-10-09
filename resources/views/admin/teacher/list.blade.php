@@ -29,6 +29,46 @@
                     <h3 class="card-title">Teachers List</h3>
                     </div>
 
+                    <div class="p-3 pb-3">
+                        <form method="GET" action="{{ route('admin.teacher.list') }}" class="mb-2">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-2">
+                            <label class="form-label mb-1">Name</label>
+                            <input type="text" name="name" value="{{ request('name') }}" class="form-control" placeholder="Name">
+                            </div>
+                            <div class="col-md-2">
+                            <label class="form-label mb-1">Email</label>
+                            <input type="text" name="email" value="{{ request('email') }}" class="form-control" placeholder="Email">
+                            </div>
+                            <div class="col-md-2">
+                            <label class="form-label mb-1">Mobile</label>
+                            <input type="text" name="mobile" value="{{ request('mobile') }}" class="form-control" placeholder="Mobile">
+                            </div>
+                            <div class="col-md-2">
+                            <label class="form-label mb-1">Gender</label>
+                            <select name="gender" class="form-select">
+                                <option value="">All</option>
+                                <option value="male"   {{ request('gender')=='male'?'selected':'' }}>Male</option>
+                                <option value="female" {{ request('gender')=='female'?'selected':'' }}>Female</option>
+                                <option value="other"  {{ request('gender')=='other'?'selected':'' }}>Other</option>
+                            </select>
+                            </div>
+                            <div class="col-md-2">
+                            <label class="form-label mb-1">Status</label>
+                            <select name="status" class="form-select">
+                                <option value="">All</option>
+                                <option value="1" {{ request('status')==='1'?'selected':'' }}>Active</option>
+                                <option value="0" {{ request('status')==='0'?'selected':'' }}>Inactive</option>
+                            </select>
+                            </div>
+                            <div class="col-md-1 d-flex gap-2">
+                            <button class="btn btn-primary" type="submit">Search</button>
+                            <a href="{{ route('admin.teacher.list') }}" class="btn btn-secondary">Reset</a>
+                            </div>
+                        </div>
+                        </form>
+                    </div>
+
                     <div class="card-body p-0">
                     <table class="table table-striped">
                         <thead>
@@ -39,7 +79,6 @@
                             <th>Gender</th>
                             <th>Email</th>
                             <th>Mobile</th>
-                            <th>Occupation</th>
                             <th>Address</th>
                             <th>Status</th>
                             <th>Created Date</th>
@@ -62,11 +101,15 @@
                                     <td>{{ $value->gender }}</td>
                                     <td>{{ $value->email }}</td>
                                     <td>{{ $value->mobile_number }}</td>
-                                    <td>{{ $value->occupation }}</td>
                                     <td>{{ $value->address }}</td>
                                     <td>{{ $value->status == 1 ? 'Active' : 'Inactive' }}</td>
                                     <td>{{ date('d M Y', strtotime($value->created_at)) }}</td>
                                     <td>
+                                        <a href="{{ route('admin.teacher.download', ['id' => $value->id, 'slug' => \Illuminate\Support\Str::slug($value->name)]) }}"
+                                                    target="_blank" rel="noopener"
+                                                    class="btn btn-outline-danger btn-sm" title="Download PDF">
+                                                        <i class="bi bi-file-earmark-pdf-fill"></i>
+                                        </a>
                                         <a href="{{ route('admin.teacher.edit-teacher', $value->id) }}" class="btn btn-success btn-sm">Edit</a>
 
                                         <form action="{{ route('admin.teacher.delete-teacher') }}" method="POST" style="display:inline;">

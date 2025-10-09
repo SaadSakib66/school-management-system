@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Str;
+
 
 class TeacherController extends Controller
 {
@@ -39,19 +42,99 @@ class TeacherController extends Controller
      * Admin: Teacher CRUD
      * ----------------------------- */
 
-    public function list()
-    {
-        if ($resp = $this->guardSchoolContext()) return $resp;
+public function list(Request $request)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
 
-        $data['getRecord'] = User::query()
-            ->where('role', 'teacher')
-            ->ofSchool() // <- strictly current school
-            ->orderBy('name')
-            ->paginate(20);
+    $query = User::query()
+        ->where('role', 'teacher')
+        ->ofSchool() // strictly current school via your scope
+        ->orderBy('name');
 
-        $data['header_title'] = 'Teacher List';
-        return view('admin.teacher.list', $data);
+    // 🔍 Filters
+    if ($request->filled('name')) {
+        $query->where(function ($q) use ($request) {
+            $q->where('name', 'like', '%'.$request->name.'%')
+              ->orWhere('last_name', 'like', '%'.$request->name.'%');
+        });
     }
+    if ($request->filled('email')) {
+        $query->where('email', 'like', '%'.$request->email.'%');
+    }
+    if ($request->filled('mobile')) {
+        $query->where('mobile_number', 'like', '%'.$request->mobile.'%');
+    }
+    if ($request->filled('gender')) {
+        $query->where('gender', $request->gender);
+    }
+    if ($request->filled('status') && $request->status !== '') {
+        $query->where('status', (int) $request->status);
+    }
+
+    $data['getRecord'] = $query->paginate(20)->appends($request->all());
+    $data['header_title'] = 'Teacher List';
+
+    return view('admin.teacher.list', $data);
+}
+
+
+public function download($id)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
+
+    $schoolId = $this->currentSchoolId();
+
+    $teacher = User::query()
+        ->where('role','teacher')
+        ->ofSchool($schoolId)
+        ->findOrFail($id);
+
+    // ---------- normalize & embed teacher photo from public/storage/teacher ----------
+    $photoSrc  = null;
+    $photoVal  = $teacher->teacher_photo; // stored path or filename
+
+    if ($photoVal) {
+        // Strip any leading "public/" or "storage/"
+        $normalized = ltrim(str_replace(['public/', 'storage/'], '', $photoVal), '/');
+
+        // Ensure it starts with "teacher/"
+        if (!Str::startsWith($normalized, 'teacher/')) {
+            $normalized = 'teacher/' . $normalized;
+        }
+
+        if (Storage::disk('public')->exists($normalized)) {
+            $bin = Storage::disk('public')->get($normalized);
+
+            // Detect MIME safely (no ->mimeType() calls)
+            $mime = 'image/jpeg';
+            if (class_exists(\finfo::class)) {
+                $fi = new \finfo(FILEINFO_MIME_TYPE);
+                $detected = $fi->buffer($bin);
+                if ($detected) $mime = $detected;
+            } else {
+                $ext = strtolower(pathinfo($normalized, PATHINFO_EXTENSION));
+                $map = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp'];
+                if (isset($map[$ext])) $mime = $map[$ext];
+            }
+
+            $photoSrc = 'data:'.$mime.';base64,'.base64_encode($bin);
+        }
+    }
+    // -------------------------------------------------------------------------------
+
+    $data = [
+        'user'     => $teacher,
+        'photoSrc' => $photoSrc,
+    ];
+
+    $fileName = Str::slug(trim($teacher->name.' '.$teacher->last_name) ?: 'teacher') . '.pdf';
+
+    $pdf = Pdf::loadView('pdf.teacher_profile', $data)->setPaper('A4','portrait');
+
+    // inline (open in new tab via target="_blank")
+    return $pdf->stream($fileName, ['Attachment' => false]);
+}
+
 
     public function add()
     {

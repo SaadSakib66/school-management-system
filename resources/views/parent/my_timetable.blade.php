@@ -48,10 +48,20 @@
                       @endforeach
                     </select>
                   </div>
-                  <div class="col-md-6">
-                    <button type="submit" class="btn btn-primary">Show</button>
-                    <a href="{{ route('parent.my-timetable') }}" class="btn btn-success">Reset</a>
-                  </div>
+<div class="col-md-6">
+  <button type="submit" class="btn btn-primary">Show</button>
+  <a href="{{ route('parent.my-timetable') }}" class="btn btn-success">Reset</a>
+
+  {{-- Download (enabled only if a student is selected) --}}
+  <button type="submit"
+          name="download"
+          value="1"
+          formtarget="_blank"
+          class="btn btn-danger"
+          {{ $selectedStudentId ? '' : 'disabled' }}>
+    Download PDF
+  </button>
+</div>
                 </form>
               @endif
             </div>

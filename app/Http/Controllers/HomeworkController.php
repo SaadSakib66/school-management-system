@@ -158,8 +158,9 @@ class HomeworkController extends Controller
             : null;
 
         Homework::create([
-            'class_id'        => $data['class_id'],
-            'subject_id'      => $data['subject_id'],
+            'school_id'       => $this->currentSchoolId(),   // <— add this if your trait doesn’t do it
+            'class_id'        => (int)$data['class_id'],
+            'subject_id'      => (int)$data['subject_id'],
             'homework_date'   => $data['homework_date'],
             'submission_date' => $data['submission_date'],
             'description'     => $data['description'],
@@ -341,9 +342,21 @@ class HomeworkController extends Controller
         $data['allSubjects'] = $this->subjectsForClasses($classIds);
 
         // LIST: show homework from ANY creator as long as it's in teacher's classes
+        // $homeworks = Homework::with(['class','subject','creator'])
+        //     ->whereIn('class_id', $classIds)
+        //     ->when($selectedClassId, fn($q) => $q->where('class_id', $selectedClassId))
+        //     ->when($request->filled('subject_id'), fn($q) => $q->where('subject_id', $request->integer('subject_id')))
+        //     ->when($request->filled('homework_from'),   fn($q) => $q->whereDate('homework_date', '>=', $request->input('homework_from')))
+        //     ->when($request->filled('homework_to'),     fn($q) => $q->whereDate('homework_date', '<=', $request->input('homework_to')))
+        //     ->when($request->filled('submission_from'), fn($q) => $q->whereDate('submission_date', '>=', $request->input('submission_from')))
+        //     ->when($request->filled('submission_to'),   fn($q) => $q->whereDate('submission_date', '<=', $request->input('submission_to')))
+        //     ->orderByDesc('homework_date')->orderByDesc('id')
+        //     ->paginate(20)->appends($request->query());
         $homeworks = Homework::with(['class','subject','creator'])
             ->whereIn('class_id', $classIds)
             ->when($selectedClassId, fn($q) => $q->where('class_id', $selectedClassId))
+            ->when($request->boolean('mine'), fn($q) => $q->where('created_by', Auth::id()))         // <— NEW
+            ->when($request->boolean('pending'), fn($q) => $q->pending())                            // <— OPTIONAL
             ->when($request->filled('subject_id'), fn($q) => $q->where('subject_id', $request->integer('subject_id')))
             ->when($request->filled('homework_from'),   fn($q) => $q->whereDate('homework_date', '>=', $request->input('homework_from')))
             ->when($request->filled('homework_to'),     fn($q) => $q->whereDate('homework_date', '<=', $request->input('homework_to')))
@@ -426,6 +439,7 @@ class HomeworkController extends Controller
             : null;
 
         Homework::create([
+            'school_id'       => $this->currentSchoolId(),   // <— add this if your trait doesn’t do it
             'class_id'        => (int)$data['class_id'],
             'subject_id'      => (int)$data['subject_id'],
             'homework_date'   => $data['homework_date'],
@@ -540,13 +554,26 @@ class HomeworkController extends Controller
     /* ===== Helpers (teacher scope) ===== */
 
     // All class IDs assigned to the logged-in teacher (scoped by school)
-    private function myClassIds()
-    {
-        return AssignClassTeacherModel::where('teacher_id', Auth::id())
-            ->where('status', 1)
-            ->pluck('class_id')
-            ->values();
-    }
+    // private function myClassIds()
+    // {
+    //     return AssignClassTeacherModel::where('teacher_id', Auth::id())
+    //         ->where('status', 1)
+    //         ->pluck('class_id')
+    //         ->values();
+    // }
+
+private function myClassIds()
+{
+    $schoolId = $this->currentSchoolId();
+
+    return AssignClassTeacherModel::query()
+        ->where('teacher_id', Auth::id())
+        ->where('school_id', $schoolId)
+        ->where('status', 1)
+        ->whereNull('deleted_at')
+        ->pluck('class_id')
+        ->values();
+}
 
     // Distinct subjects across a set of classes (used for the filter when no class selected)
     private function subjectsForClasses($classIds)

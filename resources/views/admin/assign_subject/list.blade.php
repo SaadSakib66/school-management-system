@@ -29,6 +29,72 @@
                     <h3 class="card-title">Assigned Subject List</h3>
                     </div>
 
+                    <div class="p-3 pb-0">
+                    <form method="GET" action="{{ route('admin.assign-subject.list') }}" class="mb-2" id="assignFilterForm">
+                        {{-- always include this; it’s sent only when Search submits the form --}}
+                        <input type="hidden" name="did_search" value="1">
+
+                        <div class="row g-2 align-items-end">
+
+                        {{-- Class --}}
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Class</label>
+                            <select name="class_id" class="form-select">
+                            <option value="">All</option>
+                            @foreach($getClass as $class)
+                                <option value="{{ $class->id }}" {{ request('class_id')==$class->id ? 'selected':'' }}>
+                                {{ $class->name }}
+                                </option>
+                            @endforeach
+                            </select>
+                        </div>
+
+                        {{-- Subject --}}
+                        <div class="col-md-3">
+                            <label class="form-label mb-1">Subject</label>
+                            <select name="subject_id" class="form-select">
+                            <option value="">All</option>
+                            @foreach($getSubject as $subject)
+                                <option value="{{ $subject->id }}" {{ request('subject_id')==$subject->id ? 'selected':'' }}>
+                                {{ $subject->name }}
+                                </option>
+                            @endforeach
+                            </select>
+                        </div>
+
+                        {{-- Status --}}
+                        <div class="col-md-2">
+                            <label class="form-label mb-1">Status</label>
+                            <select name="status" class="form-select">
+                            <option value="">All</option>
+                            <option value="1" {{ request('status')==='1' ? 'selected':'' }}>Active</option>
+                            <option value="0" {{ request('status')==='0' ? 'selected':'' }}>Inactive</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-4 d-flex gap-2">
+                            <button class="btn btn-primary" type="submit">Search</button>
+                            <a href="{{ route('admin.assign-subject.list') }}" class="btn btn-secondary">Reset</a>
+
+                            {{-- Download: enabled only after a Search (did_search=1 present) --}}
+                            @if(request('did_search')==='1')
+                            <a href="{{ route('admin.assign-subject.download', request()->query()) }}"
+                                target="_blank" rel="noopener"
+                                class="btn btn-outline-danger">
+                                <i class="bi bi-file-earmark-pdf-fill"></i> Download
+                            </a>
+                            @else
+                            <button type="button" class="btn btn-outline-danger"
+                                    onclick="alert('Please click Search after setting filters, then press Download.');">
+                                <i class="bi bi-file-earmark-pdf-fill"></i> Download
+                            </button>
+                            @endif
+                        </div>
+
+                        </div>
+                    </form>
+                    </div>
+
                     <div class="card-body p-0">
                     <table class="table table-striped">
                         <thead>

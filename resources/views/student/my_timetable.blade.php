@@ -17,6 +17,16 @@
 
           @include('admin.message')
 
+            @if(!empty($class))
+            <div class="mb-2 text-end">
+                <a href="{{ route('student.calendar.download') }}"
+                class="btn btn-danger"
+                target="_blank">
+                Download Class Routine
+                </a>
+            </div>
+            @endif
+
           @if(!$classId)
             <div class="alert alert-warning">
               You are not assigned to any class yet. Please contact the administrator.

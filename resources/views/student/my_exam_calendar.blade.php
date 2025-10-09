@@ -25,6 +25,17 @@
               <a class="btn btn-outline-secondary" href="{{ route('student.my-exam-calendar') }}">Reset</a>
             @endif
           </form>
+
+        @if(!empty($selectedExamId))
+            <div class="d-flex justify-content-md-end mt-2">
+            <a class="btn btn-danger"
+                href="{{ route('student.exam-calendar.download', ['exam_id' => $selectedExamId]) }}"
+                target="_blank">
+                Download Exam Schedule
+            </a>
+            </div>
+        @endif
+        
         </div>
       </div>
       @if(session('info'))

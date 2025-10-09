@@ -36,25 +36,39 @@ class ExamController extends Controller
                 ->with('error', 'Please select a school first.');
         }
 
-        $q = trim((string) $request->input('q', ''));
-        $perPage = (int) $request->input('per_page', 15);
+        $name     = trim((string) $request->input('name', ''));
+        $by       = trim((string) $request->input('created_by', ''));
+        $perPage  = (int) $request->input('per_page', 15);
 
         $exams = Exam::query()
-            ->when($q !== '', function ($w) use ($q) {
-                $w->where('name', 'like', "%{$q}%")
-                  ->orWhere('note', 'like', "%{$q}%");
-            })
-            ->orderBy('name')
+            ->leftJoin('users as u', 'u.id', '=', 'exams.created_by')
+            ->when($name !== '', fn ($q) =>
+                $q->where('exams.name', 'like', "%{$name}%")
+                ->orWhere('exams.note', 'like', "%{$name}%")
+            )
+            ->when($by !== '', fn ($q) => $q->where(function ($qq) use ($by) {
+                $qq->where('u.name', 'like', "%{$by}%")
+                ->orWhere('u.last_name', 'like', "%{$by}%")
+                ->orWhereRaw("CONCAT(COALESCE(u.name,''),' ',COALESCE(u.last_name,'')) like ?", ["%{$by}%"]);
+            }))
+            ->orderBy('exams.name')
+            ->selectRaw("
+                exams.*,
+                TRIM(CONCAT(COALESCE(u.name,''), ' ', COALESCE(u.last_name,''))) as created_by_name
+            ")
             ->paginate($perPage)
-            ->withQueryString();
+            ->appends($request->query());
 
         return view('admin.exam.list', [
             'header_title' => 'Exam List',
             'getRecord'    => $exams,
-            'exam'         => null,
-            'q'            => $q,
+            // pass current filters back to the view
+            'name'         => $name,
+            'created_by'   => $by,
+            'per_page'     => $perPage,
         ]);
     }
+
 
     public function add()
     {

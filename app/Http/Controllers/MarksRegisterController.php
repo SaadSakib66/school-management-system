@@ -17,6 +17,9 @@ use Carbon\Carbon;
 use App\Models\AssignClassTeacherModel;
 use App\Models\Subject;
 use App\Models\MarksGrade;
+// use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Validation\Rule;
+use Barryvdh\DomPDF\Facade\Pdf as PDF;
 
 class MarksRegisterController extends Controller
 {
@@ -102,6 +105,168 @@ class MarksRegisterController extends Controller
 
         return view('admin.marks_register.list', $data);
     }
+
+
+public function download(Request $request)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
+
+    $request->validate([
+        'exam_id'    => ['required','exists:exams,id'],
+        'class_id'   => ['required','exists:classes,id'],
+        'student_id' => ['nullable','integer','exists:users,id'],
+    ]);
+
+    $examId    = (int) $request->exam_id;
+    $classId   = (int) $request->class_id;
+    $studentId = $request->filled('student_id') ? (int) $request->student_id : null;
+
+    $exam  = Exam::findOrFail($examId);
+    $class = ClassModel::findOrFail($classId);
+
+    // ✅ Only ACTIVE subjects for this class
+    $activeSubjectIds = ClassSubject::subjectsForClass($classId)->pluck('id');
+    if ($activeSubjectIds->isEmpty()) {
+        return back()->with('error', 'No active subjects found for this class.');
+    }
+
+    // Exam schedules filtered by ACTIVE subjects only
+    $schedules = ExamSchedule::where('exam_id', $examId)
+        ->where('class_id', $classId)
+        ->whereIn('subject_id', $activeSubjectIds)
+        ->get();
+
+    if ($schedules->isEmpty()) {
+        return back()->with('error', 'No active subjects scheduled for this exam & class.');
+    }
+
+    // Subject names (only for the filtered subjects)
+    $subjectIds   = $schedules->pluck('subject_id')->unique()->values();
+    $subjectNames = Subject::whereIn('id', $subjectIds)->pluck('name','id');
+
+    // Students (entire class or a single student)
+    $studentsQ = User::where('role','student')
+        ->where('class_id', $classId)
+        ->orderBy('name')->orderBy('last_name');
+
+    if ($studentId) {
+        $studentsQ->where('id', $studentId);
+    }
+    $students = $studentsQ->get(['id','name','last_name','roll_number','class_id']);
+
+    if ($students->isEmpty()) {
+        return back()->with('error', 'No student found for the given selection.');
+    }
+
+    // Guard: if a specific student is requested, ensure they belong to this class
+    if ($studentId && !$students->pluck('id')->contains($studentId)) {
+        return back()->with('error', 'Selected student does not belong to the chosen class.');
+    }
+
+    // Preload marks for all selected students
+    $marksByStudent = MarksRegister::where('exam_id', $examId)
+        ->where('class_id', $classId)
+        ->whereIn('student_id', $students->pluck('id'))
+        ->whereIn('subject_id', $subjectIds) // extra safety: only the active & scheduled subjects
+        ->get()
+        ->groupBy('student_id');
+
+    // Grade bands + helper
+    $gradeBands = MarksGrade::orderBy('percent_from', 'desc')
+        ->get(['grade_name','percent_from','percent_to']);
+
+    $pickGrade = static function (?float $pct) use ($gradeBands) {
+        if ($pct === null) return null;
+        foreach ($gradeBands as $g) {
+            if ($pct >= (float) $g->percent_from && $pct <= (float) $g->percent_to) {
+                return $g->grade_name;
+            }
+        }
+        return null;
+    };
+
+    // Build printable payload per student (only active, scheduled subjects)
+    $printables = [];
+
+    foreach ($students as $stu) {
+        $rows        = [];
+        $grandFull   = 0;
+        $grandTotal  = 0;
+        $anyFail     = false;
+
+        $stuMarks = optional($marksByStudent->get($stu->id))->keyBy('subject_id') ?? collect();
+
+        foreach ($schedules as $es) {
+            $sid     = (int) $es->subject_id;
+            $sName   = $subjectNames[$sid] ?? ('Subject #'.$sid);
+            $full    = (int) ($es->full_mark ?? 0);
+            $passing = (int) ($es->passing_mark ?? 0);
+
+            $grandFull += $full;
+
+            $m  = $stuMarks->get($sid);
+            $cw = (int) ($m->class_work ?? 0);
+            $tw = (int) ($m->test_work  ?? 0);
+            $hw = (int) ($m->home_work  ?? 0);
+            $ex = (int) ($m->exam_mark  ?? 0);
+            $tt = (int) ($m->total      ?? ($cw + $tw + $hw + $ex));
+
+            $grandTotal += $tt;
+            $pass = $tt >= $passing;
+            if (!$pass) $anyFail = true;
+
+            $rows[] = [
+                'subject'      => $sName,
+                'class_work'   => $cw,
+                'test_work'    => $tw,
+                'home_work'    => $hw,
+                'exam'         => $ex,
+                'total'        => $tt,
+                'passing_mark' => $passing,
+                'full_mark'    => $full,
+                'result'       => $pass ? 'Pass' : 'Fail',
+            ];
+        }
+
+        $percentage = $grandFull > 0 ? round($grandTotal * 100 / $grandFull, 2) : null;
+        $overall    = $anyFail ? 'Fail' : 'Pass';
+        $gradeName  = $pickGrade($percentage);
+
+        $printables[] = [
+            'student'    => $stu,
+            'rows'       => $rows,
+            'grandFull'  => $grandFull,
+            'grandTotal' => $grandTotal,
+            'percentage' => $percentage,
+            'overall'    => $overall,
+            'grade'      => $gradeName,
+        ];
+    }
+
+    $params = [
+        'exam'        => $exam,
+        'class'       => $class,
+        'printables'  => $printables,
+        'generatedAt' => Carbon::now()->format('d-m-Y g:i A'),
+    ];
+
+    $fileName = 'Result_'
+        . preg_replace('/\s+/', '_', $exam->name)
+        . '_Class_' . preg_replace('/\s+/', '_', ($class->name ?? $class->id))
+        . ($studentId ? ('_Student_'.$studentId) : '')
+        . '.pdf';
+
+    $pdf = Pdf::loadView('pdf.marks_register_result', $params)
+        ->setPaper('a4', 'portrait')
+        ->setOptions([
+            'isRemoteEnabled' => true,
+            'dpi'             => 120,
+            'defaultFont'     => 'DejaVu Sans',
+        ]);
+
+    return $pdf->stream($fileName);     // or ->download($fileName)
+}
+
 
     public function save(Request $request)
     {
@@ -241,6 +406,7 @@ class MarksRegisterController extends Controller
 
         $selectedExamId  = $request->integer('exam_id') ?: null;
         $selectedClassId = $request->integer('class_id') ?: null;
+        $grades = MarksGrade::orderBy('percent_from','desc')->get(['grade_name','percent_from','percent_to']);
 
         // Block inactive / unassigned class
         if ($selectedClassId && !$assignedClassIds->contains($selectedClassId)) {
@@ -295,6 +461,7 @@ class MarksRegisterController extends Controller
             'students'        => $students,
             'scheduleMap'     => $scheduleMap,
             'marks'           => $marks,
+            'grades'          => $grades,
         ]);
     }
 
@@ -415,6 +582,217 @@ class MarksRegisterController extends Controller
             'exam_id'  => $examId,
             'class_id' => $classId,
         ])->with('success', 'Marks saved successfully.');
+    }
+
+
+    public function teacherStudentsForClass($classId)
+    {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
+        $teacher = Auth::user();
+        abort_unless($teacher && $teacher->role === 'teacher', 403);
+
+        $schoolId = $this->currentSchoolId();
+
+        // Validate class belongs to current school
+        request()->merge(['class_id' => $classId]);
+        request()->validate([
+            'class_id' => [
+                'required','integer',
+                Rule::exists('classes','id')->where(fn($q) => $q->where('school_id', $schoolId)),
+            ],
+        ]);
+
+        // Ensure teacher is assigned to this class (ACTIVE assignment)
+        $isAssigned = AssignClassTeacherModel::where('teacher_id', $teacher->id)
+            ->where('class_id', (int)$classId)
+            ->where('status', 1)
+            ->whereNull('deleted_at')
+            ->exists();
+
+        abort_unless($isAssigned, 403, 'You are not assigned to this class (or it is inactive).');
+
+        $rows = User::query()
+            ->where('role', 'student')
+            ->where('class_id', (int)$classId)
+            ->whereNull('deleted_at')
+            ->orderBy('name')->orderBy('last_name')
+            ->get(['id','name','last_name']);
+
+        return response()->json(
+            $rows->map(fn($u) => [
+                'id'   => $u->id,
+                'name' => trim($u->name.' '.$u->last_name),
+            ])
+        );
+    }
+
+    /**
+     * Teacher PDF download for marks register.
+     * Same output as admin download, but enforces teacher->assigned class constraint.
+     * Accepts: exam_id (required), class_id (required), student_id (optional)
+     */
+    public function teacherDownload(Request $request)
+    {
+        if ($resp = $this->guardSchoolContext()) return $resp;
+
+        $teacher = Auth::user();
+        abort_unless($teacher && $teacher->role === 'teacher', 403);
+
+        $request->validate([
+            'exam_id'    => ['required','exists:exams,id'],
+            'class_id'   => ['required','exists:classes,id'],
+            'student_id' => ['nullable','integer','exists:users,id'],
+        ]);
+
+        $examId    = (int) $request->exam_id;
+        $classId   = (int) $request->class_id;
+        $studentId = $request->filled('student_id') ? (int) $request->student_id : null;
+
+        // Only allow ACTIVE class assignments for this teacher
+        $isAssigned = AssignClassTeacherModel::where('teacher_id', $teacher->id)
+            ->where('class_id', $classId)
+            ->where('status', 1)
+            ->whereNull('deleted_at')
+            ->exists();
+        abort_unless($isAssigned, 403, 'You are not assigned to this class (or it is inactive).');
+
+        $exam  = Exam::findOrFail($examId);
+        $class = ClassModel::findOrFail($classId);
+
+        // Only ACTIVE subjects for this class
+        $activeSubjectIds = ClassSubject::subjectsForClass($classId)->pluck('id');
+        if ($activeSubjectIds->isEmpty()) {
+            return back()->with('error', 'No active subjects found for this class.');
+        }
+
+        // Exam schedules filtered by ACTIVE subjects
+        $schedules = ExamSchedule::where('exam_id', $examId)
+            ->where('class_id', $classId)
+            ->whereIn('subject_id', $activeSubjectIds)
+            ->get();
+
+        if ($schedules->isEmpty()) {
+            return back()->with('error', 'No active subjects scheduled for this exam & class.');
+        }
+
+        $subjectIds   = $schedules->pluck('subject_id')->unique()->values();
+        $subjectNames = Subject::whereIn('id', $subjectIds)->pluck('name','id');
+
+        // Students: entire class or one student
+        $studentsQ = User::where('role','student')
+            ->where('class_id', $classId)
+            ->orderBy('name')->orderBy('last_name');
+
+        if ($studentId) {
+            $studentsQ->where('id', $studentId);
+        }
+        $students = $studentsQ->get(['id','name','last_name','roll_number','class_id']);
+
+        if ($students->isEmpty()) {
+            return back()->with('error', 'No student found for the given selection.');
+        }
+        if ($studentId && !$students->pluck('id')->contains($studentId)) {
+            return back()->with('error', 'Selected student does not belong to the chosen class.');
+        }
+
+        $marksByStudent = MarksRegister::where('exam_id', $examId)
+            ->where('class_id', $classId)
+            ->whereIn('student_id', $students->pluck('id'))
+            ->whereIn('subject_id', $subjectIds)
+            ->get()
+            ->groupBy('student_id');
+
+        $gradeBands = MarksGrade::orderBy('percent_from', 'desc')
+            ->get(['grade_name','percent_from','percent_to']);
+
+        $pickGrade = static function (?float $pct) use ($gradeBands) {
+            if ($pct === null) return null;
+            foreach ($gradeBands as $g) {
+                if ($pct >= (float) $g->percent_from && $pct <= (float) $g->percent_to) {
+                    return $g->grade_name;
+                }
+            }
+            return null;
+        };
+
+        $printables = [];
+        foreach ($students as $stu) {
+            $rows        = [];
+            $grandFull   = 0;
+            $grandTotal  = 0;
+            $anyFail     = false;
+
+            $stuMarks = optional($marksByStudent->get($stu->id))->keyBy('subject_id') ?? collect();
+
+            foreach ($schedules as $es) {
+                $sid     = (int) $es->subject_id;
+                $sName   = $subjectNames[$sid] ?? ('Subject #'.$sid);
+                $full    = (int) ($es->full_mark ?? 0);
+                $passing = (int) ($es->passing_mark ?? 0);
+                $grandFull += $full;
+
+                $m  = $stuMarks->get($sid);
+                $cw = (int) ($m->class_work ?? 0);
+                $tw = (int) ($m->test_work  ?? 0);
+                $hw = (int) ($m->home_work  ?? 0);
+                $ex = (int) ($m->exam_mark  ?? 0);
+                $tt = (int) ($m->total      ?? ($cw + $tw + $hw + $ex));
+
+                $grandTotal += $tt;
+                $pass = $tt >= $passing;
+                if (!$pass) $anyFail = true;
+
+                $rows[] = [
+                    'subject'      => $sName,
+                    'class_work'   => $cw,
+                    'test_work'    => $tw,
+                    'home_work'    => $hw,
+                    'exam'         => $ex,
+                    'total'        => $tt,
+                    'passing_mark' => $passing,
+                    'full_mark'    => $full,
+                    'result'       => $pass ? 'Pass' : 'Fail',
+                ];
+            }
+
+            $percentage = $grandFull > 0 ? round($grandTotal * 100 / $grandFull, 2) : null;
+            $overall    = $anyFail ? 'Fail' : 'Pass';
+            $gradeName  = $pickGrade($percentage);
+
+            $printables[] = [
+                'student'    => $stu,
+                'rows'       => $rows,
+                'grandFull'  => $grandFull,
+                'grandTotal' => $grandTotal,
+                'percentage' => $percentage,
+                'overall'    => $overall,
+                'grade'      => $gradeName,
+            ];
+        }
+
+        $params = [
+            'exam'        => $exam,
+            'class'       => $class,
+            'printables'  => $printables,
+            'generatedAt' => Carbon::now()->format('d-m-Y g:i A'),
+        ];
+
+        $fileName = 'Teacher_Result_'
+            . preg_replace('/\s+/', '_', $exam->name)
+            . '_Class_' . preg_replace('/\s+/', '_', ($class->name ?? $class->id))
+            . ($studentId ? ('_Student_'.$studentId) : '')
+            . '.pdf';
+
+        $pdf = Pdf::loadView('pdf.marks_register_result', $params)
+            ->setPaper('a4', 'portrait')
+            ->setOptions([
+                'isRemoteEnabled' => true,
+                'dpi'             => 120,
+                'defaultFont'     => 'DejaVu Sans',
+            ]);
+
+        return $pdf->stream($fileName);
     }
 
     // Student-specific method
@@ -674,6 +1052,41 @@ class MarksRegisterController extends Controller
             }
         }
 
+        /* ---------- PDF (inline) branch ---------- */
+        if ($request->boolean('download')) {
+            // Must have a valid selection and built section
+            if (! $selectedStudentId || ! $selectedExamId || empty($section)) {
+                return back()->with('error', 'Please select a student and exam first.');
+            }
+
+            // Fetch a few extras for the header
+            $student = $children->firstWhere('id', $selectedStudentId);
+            $class   = $student && $student->class_id
+                ? ClassModel::select('id','name')->find($student->class_id)
+                : null;
+
+            $data = [
+                'title'        => 'Exam Result',
+                'student'      => $student,
+                'class'        => $class,
+                'exam_name'    => $section['exam']->name ?? 'Selected Exam',
+                'rows'         => $section['rows'],
+                'grandFull'    => $section['grandFull'],
+                'grandTotal'   => $section['grandTotal'],
+                'percentage'   => $section['percentage'],
+                'overall'      => $section['overall'],
+                'generated_at' => now(),
+            ];
+
+            $filename = 'Exam-Result.pdf'; // browser will show inline
+
+            return Pdf::loadView('pdf.parent_marks_register', $data)
+                ->setPaper('a4', 'portrait')
+                ->stream($filename); // inline (opens in new tab)
+        }
+        /* ---------- /PDF (inline) branch ---------- */
+
+
         return view('parent.marks_register', [
             'header_title'      => 'Child Exam Results',
             'children'          => $children,
@@ -713,4 +1126,168 @@ class MarksRegisterController extends Controller
 
         return collect();
     }
+
+
+public function studentsForClass($classId)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
+
+    $schoolId = $this->currentSchoolId();
+
+    // Validate the class exists in current school
+    request()->merge(['class_id' => $classId]);
+    request()->validate([
+        'class_id' => [
+            'required','integer',
+            Rule::exists('classes','id')->where(fn($q) => $q->where('school_id', $schoolId)),
+        ],
+    ]);
+
+    $rows = User::query()
+        ->where('role', 'student')
+        ->where('class_id', (int) $classId)
+        ->whereNull('deleted_at')
+        ->orderBy('name')->orderBy('last_name')
+        ->get(['id','name','last_name']);
+
+    // Return minimal JSON payload the UI expects
+    return response()->json(
+        $rows->map(fn($u) => [
+            'id'   => $u->id,
+            'name' => trim($u->name.' '.$u->last_name),
+        ])
+    );
+}
+
+
+public function studentResultDownload(Request $request)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
+
+    $student = Auth::user();
+    abort_unless($student && $student->role === 'student', 403);
+
+    if (!$student->class_id) {
+        // Optional: redirect back with message or render an empty PDF
+        return back()->with('info', 'You are not assigned to any class yet.');
+    }
+
+    $classId = (int) $student->class_id;
+
+    // Exams that actually have a schedule for THIS class
+    $exams = Exam::select('exams.id', 'exams.name')
+        ->join('exam_schedules as es', 'es.exam_id', '=', 'exams.id')
+        ->where('es.class_id', $classId)
+        ->groupBy('exams.id', 'exams.name')
+        ->orderBy('exams.name')
+        ->get();
+
+    $selectedExamId = $request->integer('exam_id') ?: null;
+    $examIdsToShow  = $selectedExamId ? [$selectedExamId] : $exams->pluck('id')->all();
+
+    // Grade bands (per school)
+    $gradeBands = MarksGrade::orderBy('percent_from', 'desc')
+        ->get(['grade_name','percent_from','percent_to']);
+
+    $pickGrade = static function (?float $pct) use ($gradeBands) {
+        if ($pct === null) return null;
+        foreach ($gradeBands as $g) {
+            if ($pct >= (float)$g->percent_from && $pct <= (float)$g->percent_to) {
+                return $g->grade_name;
+            }
+        }
+        return null;
+    };
+
+    $sections = [];
+
+    if (!empty($examIdsToShow)) {
+        $schedules = ExamSchedule::whereIn('exam_id', $examIdsToShow)
+            ->where('class_id', $classId)
+            ->get();
+
+        $subjectNames = Subject::whereIn('id', $schedules->pluck('subject_id')->unique())
+            ->pluck('name', 'id');
+
+        $marksByExamSubject = MarksRegister::where('class_id', $classId)
+            ->where('student_id', $student->id)
+            ->whereIn('exam_id', $examIdsToShow)
+            ->get()
+            ->keyBy(fn ($r) => $r->exam_id . '|' . $r->subject_id);
+
+        foreach ($examIdsToShow as $eid) {
+            $exam = $exams->firstWhere('id', $eid);
+            if (!$exam) continue;
+
+            $rows        = [];
+            $grandFull   = 0;
+            $grandTotal  = 0;
+            $anyFail     = false;
+
+            $examSchedules = $schedules->where('exam_id', $eid);
+            foreach ($examSchedules as $es) {
+                $sid        = (int) $es->subject_id;
+                $subName    = $subjectNames[$sid] ?? ('Subject #' . $sid);
+                $full       = (int) ($es->full_mark ?? 0);
+                $passing    = (int) ($es->passing_mark ?? 0);
+                $grandFull += $full;
+
+                $mark = $marksByExamSubject->get($eid.'|'.$sid);
+                $cw = (int) ($mark->class_work ?? 0);
+                $tw = (int) ($mark->test_work  ?? 0);
+                $hw = (int) ($mark->home_work  ?? 0);
+                $ex = (int) ($mark->exam_mark  ?? 0);
+                $ttl = (int) ($mark->total      ?? ($cw + $tw + $hw + $ex));
+
+                $grandTotal += $ttl;
+
+                $pass = $ttl >= $passing;
+                if (!$pass) $anyFail = true;
+
+                $rows[] = [
+                    'subject'       => $subName,
+                    'class_work'    => $cw,
+                    'test_work'     => $tw,
+                    'home_work'     => $hw,
+                    'exam'          => $ex,
+                    'total'         => $ttl,
+                    'passing_mark'  => $passing,
+                    'full_mark'     => $full,
+                    'result'        => $pass ? 'Pass' : 'Fail',
+                ];
+            }
+
+            $percentage = $grandFull > 0 ? round($grandTotal * 100 / $grandFull, 2) : null;
+            $overall    = $anyFail ? 'Fail' : 'Pass';
+            $gradeName  = $overall === 'Fail' ? 'F' : ($pickGrade($percentage) ?? '-');
+
+            $sections[] = [
+                'exam'       => $exam,
+                'rows'       => $rows,
+                'grandFull'  => $grandFull,
+                'grandTotal' => $grandTotal,
+                'percentage' => $percentage,
+                'overall'    => $overall,
+                'grade'      => $gradeName,
+            ];
+        }
+    }
+
+    $params = [
+        'title'       => 'MY EXAM RESULT',
+        'studentName' => trim($student->name . ' ' . ($student->last_name ?? '')),
+        'className'   => optional($student->class)->name ?? '-',
+        'generated'   => now()->format('d M Y g:i A'),
+        'sections'    => $sections,
+        'singleExam'  => (bool) $selectedExamId,
+    ];
+
+    $pdf = PDF::loadView('pdf.student_results', $params)->setPaper('a4','portrait');
+    $file = 'My_Exam_Result' . ($selectedExamId ? '_Exam_' . $selectedExamId : '_All') . '.pdf';
+
+    return $pdf->stream($file, ['Attachment' => false]); // open in new tab
+}
+
+
+
 }

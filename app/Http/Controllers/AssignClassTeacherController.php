@@ -10,6 +10,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Str;
+
 class AssignClassTeacherController extends Controller
 {
     /* =======================
@@ -24,31 +27,144 @@ class AssignClassTeacherController extends Controller
      * Admin side
      * ======================= */
 
-    public function list(Request $request)
-    {
-        // Use JOINs + aliases so Blade fields (class_name/teacher_name/created_by_name) exist.
-        $data['getRecord'] = AssignClassTeacherModel::query()
-            ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
-            ->leftJoin('users as t', function ($j) {
-                $j->on('t.id', '=', 'assign_class_teacher.teacher_id')
-                  ->whereNull('t.deleted_at');
-            })
-            ->leftJoin('users as u', function ($j) {
-                $j->on('u.id', '=', 'assign_class_teacher.created_by')
-                  ->whereNull('u.deleted_at');
-            })
-            ->select([
-                'assign_class_teacher.*',
-                'c.name as class_name',
-                't.name as teacher_name',
-                'u.name as created_by_name',
-            ])
-            ->orderByDesc('assign_class_teacher.id')
-            ->paginate(10);
+    // public function list(Request $request)
+    // {
+    //     // Use JOINs + aliases so Blade fields (class_name/teacher_name/created_by_name) exist.
+    //     $data['getRecord'] = AssignClassTeacherModel::query()
+    //         ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
+    //         ->leftJoin('users as t', function ($j) {
+    //             $j->on('t.id', '=', 'assign_class_teacher.teacher_id')
+    //               ->whereNull('t.deleted_at');
+    //         })
+    //         ->leftJoin('users as u', function ($j) {
+    //             $j->on('u.id', '=', 'assign_class_teacher.created_by')
+    //               ->whereNull('u.deleted_at');
+    //         })
+    //         ->select([
+    //             'assign_class_teacher.*',
+    //             'c.name as class_name',
+    //             't.name as teacher_name',
+    //             'u.name as created_by_name',
+    //         ])
+    //         ->orderByDesc('assign_class_teacher.id')
+    //         ->paginate(10);
 
-        $data['header_title'] = 'Assign Class Teacher List';
-        return view('admin.assign_class_teacher.list', $data);
+    //     $data['header_title'] = 'Assign Class Teacher List';
+    //     return view('admin.assign_class_teacher.list', $data);
+    // }
+
+public function list(Request $request)
+{
+    $schoolId = $this->currentSchoolId();
+
+    $q = AssignClassTeacherModel::query()
+        ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
+        ->leftJoin('users as t', function ($j) {
+            $j->on('t.id', '=', 'assign_class_teacher.teacher_id')->whereNull('t.deleted_at');
+        })
+        ->leftJoin('users as u', function ($j) {
+            $j->on('u.id', '=', 'assign_class_teacher.created_by')->whereNull('u.deleted_at');
+        })
+        ->select([
+            'assign_class_teacher.*',
+            'c.name as class_name',
+            't.name as teacher_name',
+            'u.name as created_by_name',
+        ])
+        ->orderBy('c.name')
+        ->orderBy('t.name');
+
+    // 🔎 Filters
+    if ($request->filled('class_id')) {
+        $q->where('assign_class_teacher.class_id', (int) $request->class_id);
     }
+    if ($request->filled('teacher_id')) {
+        $q->where('assign_class_teacher.teacher_id', (int) $request->teacher_id);
+    }
+    if ($request->filled('status') && in_array((int) $request->status, [0,1], true)) {
+        $q->where('assign_class_teacher.status', (int) $request->status);
+    }
+
+    $data['getRecord'] = $q->paginate(10)->appends($request->except('page'));
+
+    // dropdowns
+    $data['getClass'] = ClassModel::query()
+        ->select('id','name')->where('school_id',$schoolId)->orderBy('name')->get();
+
+    $data['getTeachers'] = User::query()
+        ->select('id','name')
+        ->where('role','teacher')->where('school_id',$schoolId)
+        ->orderBy('name')->get();
+
+    $data['header_title'] = 'Assign Class Teacher List';
+    return view('admin.assign_class_teacher.list', $data);
+}
+
+
+public function download(Request $request)
+{
+    // Guard: must hit Search first (keeps UX consistent)
+    if ($request->input('did_search') !== '1') {
+        return back()->with('error', 'Please click Search after setting filters, then use Download.');
+    }
+
+    $q = AssignClassTeacherModel::query()
+        ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
+        ->leftJoin('users as t', function ($j) {
+            $j->on('t.id', '=', 'assign_class_teacher.teacher_id')->whereNull('t.deleted_at');
+        })
+        ->leftJoin('users as u', function ($j) {
+            $j->on('u.id', '=', 'assign_class_teacher.created_by')->whereNull('u.deleted_at');
+        })
+        ->select([
+            'assign_class_teacher.*',
+            'c.name as class_name',
+            't.name as teacher_name',
+            'u.name as created_by_name',
+        ])
+        ->orderBy('c.name')
+        ->orderBy('t.name');
+
+    // Normalize & apply filters (class/teacher/status)
+    $classId   = $request->filled('class_id')   ? (int) $request->class_id   : null;
+    $teacherId = $request->filled('teacher_id') ? (int) $request->teacher_id : null;
+
+    $status = null;
+    if ($request->filled('status')) {
+        $raw = strtolower((string)$request->status);
+        $status = in_array($raw, ['1','active'], true) ? 1 : (in_array($raw,['0','inactive'], true) ? 0 : null);
+    }
+
+    if (!is_null($classId))   $q->where('assign_class_teacher.class_id', $classId);
+    if (!is_null($teacherId)) $q->where('assign_class_teacher.teacher_id', $teacherId);
+    if (!is_null($status))    $q->where('assign_class_teacher.status', $status);
+
+    $records = $q->get();
+
+    $data = [
+        'records' => $records,
+        'filters' => ['class_id'=>$classId, 'teacher_id'=>$teacherId, 'status'=>$status],
+    ];
+
+    // filename
+    $fileName = 'assign-class-teacher';
+    if (!is_null($classId)) {
+        $class = ClassModel::find($classId);
+        if ($class) $fileName .= '-' . Str::slug($class->name);
+    }
+    if (!is_null($teacherId)) {
+        $teacher = User::find($teacherId);
+        if ($teacher) $fileName .= '-' . Str::slug($teacher->name);
+    }
+    if (!is_null($status)) $fileName .= '-' . ($status ? 'active' : 'inactive');
+    $fileName .= '.pdf';
+
+    $pdf = Pdf::loadView('pdf.assign_class_teacher_list', $data)
+              ->setPaper('A4', 'landscape');
+
+    return $pdf->stream($fileName, ['Attachment' => false]);
+}
+
 
     public function add()
     {

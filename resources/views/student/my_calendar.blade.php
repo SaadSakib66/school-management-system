@@ -26,8 +26,17 @@
 
       <div class="row justify-content-center">
         <div class="col-md-8">
-          <div id="calendar"></div>
-        </div>
+            @if(!empty($class))
+            <div class="mb-2 text-end">
+                <a href="{{ route('student.calendar.download') }}"
+                class="btn btn-danger"
+                target="_blank">
+                Download Class Routine
+                </a>
+            </div>
+            @endif
+
+            <div id="calendar"></div>
       </div>
     </div>
   </div>

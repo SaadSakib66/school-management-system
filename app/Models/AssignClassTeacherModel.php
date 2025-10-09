@@ -20,7 +20,7 @@ class AssignClassTeacherModel extends Model
     ];
 
     /* -----------------------------
-     * Relationships (if not already)
+     * Relationships
      * ----------------------------- */
     public function class()
     {
@@ -47,43 +47,38 @@ class AssignClassTeacherModel extends Model
     /* =========================================================
      * 1) “My Class & Subject” for a teacher (fixes GROUP BY)
      * ========================================================= */
-public static function getMyClassSubject(int $teacherId, int $perPage = 20)
-{
-    $schoolId = self::currentSchoolId();
+    public static function getMyClassSubject(int $teacherId, int $perPage = 20)
+    {
+        $schoolId = self::currentSchoolId();
 
-    return DB::table('assign_class_teacher as act')
-        ->join('classes', 'classes.id', '=', 'act.class_id')
-        ->join('class_subjects as cs', function ($j) {
-            $j->on('cs.class_id', '=', 'act.class_id')
-              ->where('cs.status', 1)
-              ->whereNull('cs.deleted_at');
-        })
-        ->join('subjects as s', function ($j) {
-            $j->on('s.id', '=', 'cs.subject_id')
-              ->whereNull('s.deleted_at');
-        })
-        ->where('act.teacher_id', $teacherId)
-        ->where('act.status', 1)
-        ->whereNull('act.deleted_at')
-        ->when($schoolId, fn($q) => $q->where('act.school_id', $schoolId))
+        return DB::table('assign_class_teacher as act')
+            ->join('classes', 'classes.id', '=', 'act.class_id')
+            ->join('class_subjects as cs', function ($j) {
+                $j->on('cs.class_id', '=', 'act.class_id')
+                  ->where('cs.status', 1)
+                  ->whereNull('cs.deleted_at');
+            })
+            ->join('subjects as s', function ($j) {
+                $j->on('s.id', '=', 'cs.subject_id')
+                  ->whereNull('s.deleted_at');
+            })
+            ->where('act.teacher_id', $teacherId)
+            ->where('act.status', 1)
+            ->whereNull('act.deleted_at')
+            ->when($schoolId, fn($q) => $q->where('act.school_id', $schoolId))
 
-        // ⬇️ include the fields your Blade expects
-        ->select(
-            'act.id',
-            'act.class_id',
-            'classes.name as class_name',
-            'act.status',
-            'act.created_at',
-            DB::raw("GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS subject_name")
-        )
-
-        // ⬇️ group by all non-aggregated columns to satisfy ONLY_FULL_GROUP_BY
-        ->groupBy('act.id', 'act.class_id', 'classes.name', 'act.status', 'act.created_at')
-
-        ->orderBy('classes.name')
-        ->paginate($perPage);
-}
-
+            ->select(
+                'act.id',
+                'act.class_id',
+                'classes.name as class_name',
+                'act.status',
+                'act.created_at',
+                DB::raw("GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS subject_name")
+            )
+            ->groupBy('act.id', 'act.class_id', 'classes.name', 'act.status', 'act.created_at')
+            ->orderBy('classes.name')
+            ->paginate($perPage);
+    }
 
     /* =========================================================
      * 2) Classes list for a teacher (used on "My Students")
@@ -98,8 +93,6 @@ public static function getMyClassSubject(int $teacherId, int $perPage = 20)
             ->where('act.status', 1)
             ->whereNull('act.deleted_at')
             ->when($schoolId, fn($q) => $q->where('act.school_id', $schoolId))
-
-            // distinct classes
             ->select('classes.id', 'classes.name')
             ->groupBy('classes.id', 'classes.name')
             ->orderBy('classes.name')
@@ -113,7 +106,6 @@ public static function getMyClassSubject(int $teacherId, int $perPage = 20)
     {
         $schoolId = self::currentSchoolId();
 
-        // First get class IDs this teacher handles
         $classIds = DB::table('assign_class_teacher as act')
             ->where('act.teacher_id', $teacherId)
             ->where('act.status', 1)
@@ -134,5 +126,52 @@ public static function getMyClassSubject(int $teacherId, int $perPage = 20)
             ->when($schoolId, fn($q) => $q->where('users.school_id', $schoolId))
             ->orderBy('users.name')
             ->paginate($perPage);
+    }
+
+    /* =========================================================
+     * 4) 🔹 NEW: Classes for a teacher (used by teacher timetable)
+     *     - active assignments (status=1)
+     *     - optionally filter by school
+     *     - optionally require classes.status=1 (active classes)
+     * ========================================================= */
+    public static function classesForTeacher(
+        int $teacherId,
+        ?int $schoolId = null,
+        bool $onlyActiveAssignments = true,
+        bool $onlyActiveClasses = true
+    ) {
+        $schoolId ??= self::currentSchoolId();
+
+        return DB::table('classes')
+            ->join('assign_class_teacher as act', 'act.class_id', '=', 'classes.id')
+            ->where('act.teacher_id', $teacherId)
+            ->when($schoolId, fn($q) => $q->where('act.school_id', $schoolId))
+            ->when($onlyActiveAssignments, fn($q) => $q->where('act.status', 1))
+            ->when($onlyActiveClasses, fn($q) => $q->where('classes.status', 1))
+            ->whereNull('act.deleted_at')
+            ->select('classes.id', 'classes.name', 'classes.status')
+            ->distinct()
+            ->orderBy('classes.name')
+            ->get();
+    }
+
+    /* =========================================================
+     * 5) 🔹 NEW: Class IDs for a teacher (helper)
+     * ========================================================= */
+    public static function classIdsForTeacher(
+        int $teacherId,
+        ?int $schoolId = null,
+        bool $onlyActiveAssignments = true
+    ) {
+        $schoolId ??= self::currentSchoolId();
+
+        return DB::table('assign_class_teacher as act')
+            ->where('act.teacher_id', $teacherId)
+            ->when($schoolId, fn($q) => $q->where('act.school_id', $schoolId))
+            ->when($onlyActiveAssignments, fn($q) => $q->where('act.status', 1))
+            ->whereNull('act.deleted_at')
+            ->pluck('act.class_id')
+            ->unique()
+            ->values();
     }
 }

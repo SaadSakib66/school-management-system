@@ -41,9 +41,19 @@
                     @endforeach
                   </select>
                 </div>
-                <div class="col-md-6">
+
+                <div class="col-md-6 d-flex gap-2 align-items-end">
                   <button type="submit" class="btn btn-primary">Show</button>
                   <a href="{{ route('teacher.my-timetable') }}" class="btn btn-success">Reset</a>
+
+                  {{-- Download: submits current class to teacher download route --}}
+                  <button type="submit"
+                          class="btn btn-danger"
+                          formaction="{{ route('teacher.my-timetable.download') }}"
+                          formmethod="GET"
+                          formtarget="_blank">
+                    Class Schedule Download
+                  </button>
                 </div>
               </form>
             </div>

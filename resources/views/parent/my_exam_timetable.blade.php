@@ -55,10 +55,20 @@
                     </select>
                   </div>
 
-                  <div class="col-md-4">
-                    <button type="submit" class="btn btn-primary">Search</button>
-                    <a href="{{ route('parent.my-exam-timetable') }}" class="btn btn-success">Reset</a>
-                  </div>
+<div class="col-md-4">
+  <button type="submit" class="btn btn-primary">Search</button>
+  <a href="{{ route('parent.my-exam-timetable') }}" class="btn btn-success">Reset</a>
+
+  {{-- Download (only enabled when both student & exam chosen) --}}
+  <button type="submit"
+          name="download"
+          value="1"
+          class="btn btn-danger"
+          formtarget="_blank"
+          {{ ($selectedStudentId && $selectedExamId) ? '' : 'disabled' }}>
+    Download Exam Schedule
+  </button>
+</div>
                 </form>
               @endif
             </div>

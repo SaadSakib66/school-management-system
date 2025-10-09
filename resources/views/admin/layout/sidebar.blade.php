@@ -171,14 +171,33 @@
                         </ul>
                     </li>
 
-                    <li class="nav-item {{ request()->routeIs('admin.homework.*') || request()->routeIs('admin.homework.report') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs('admin.homework.*') || request()->routeIs('admin.homework.report') ? 'active' : '' }}">
+                    @php
+                        $inHomework        = request()->routeIs('admin.homework.*');          // includes report
+                        $inHomeworkReport  = request()->routeIs('admin.homework.report');     // report only
+                    @endphp
+
+                    <li class="nav-item {{ ($inHomework || $inHomeworkReport) ? 'menu-open' : '' }}">
+                        <a href="#"
+                        class="nav-link {{ ($inHomework || $inHomeworkReport) ? 'active' : '' }}">
                             <i class="nav-icon bi bi-journal-text"></i>
                             <p>Homework <i class="nav-arrow bi bi-chevron-right"></i></p>
                         </a>
                         <ul class="nav nav-treeview">
-                            <li class="nav-item"><a href="{{ route('admin.homework.list') }}" class="nav-link {{ request()->routeIs('admin.homework.list') || request()->routeIs('admin.homework.*') ? 'active' : '' }}"><i class="bi bi-circle nav-icon"></i><p>Homework</p></a></li>
-                            <li class="nav-item"><a href="{{ route('admin.homework.report') }}" class="nav-link {{ request()->routeIs('admin.homework.report') ? 'active' : '' }}"><i class="bi bi-circle nav-icon"></i><p>Homework Report</p></a></li>
+                            {{-- Homework (CRUD/list etc.) — active on any admin.homework.* EXCEPT report --}}
+                            <li class="nav-item">
+                                <a href="{{ route('admin.homework.list') }}"
+                                class="nav-link {{ ($inHomework && !$inHomeworkReport) ? 'active' : '' }}">
+                                    <i class="bi bi-circle nav-icon"></i><p>Homework</p>
+                                </a>
+                            </li>
+
+                            {{-- Homework Report — active only on admin.homework.report --}}
+                            <li class="nav-item">
+                                <a href="{{ route('admin.homework.report') }}"
+                                class="nav-link {{ $inHomeworkReport ? 'active' : '' }}">
+                                    <i class="bi bi-circle nav-icon"></i><p>Homework Report</p>
+                                </a>
+                            </li>
                         </ul>
                     </li>
 

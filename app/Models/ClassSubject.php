@@ -72,20 +72,37 @@ class ClassSubject extends Model
 
     /* ------------- Utility: subjects for a class (qualified) ------------- */
 
+    // public static function subjectsForClass(int $classId)
+    // {
+    //     return Subject::query()
+    //         ->select('s.id', 's.name')
+    //         ->from('subjects as s')
+    //         ->join('class_subjects as cs', function ($q) use ($classId) {
+    //             $q->on('cs.subject_id', '=', 's.id')
+    //               ->where('cs.class_id', $classId)
+    //               ->where('cs.status', 1)
+    //               ->whereNull('cs.deleted_at')
+    //               ->whereColumn('cs.school_id', 's.school_id'); // keep same school
+    //         })
+    //         ->whereNull('s.deleted_at')
+    //         ->orderBy('s.name')
+    //         ->get();
+    // }
+
     public static function subjectsForClass(int $classId)
     {
         return Subject::query()
-            ->select('s.id', 's.name')
-            ->from('subjects as s')
+            ->select('subjects.id', 'subjects.name')
             ->join('class_subjects as cs', function ($q) use ($classId) {
-                $q->on('cs.subject_id', '=', 's.id')
-                  ->where('cs.class_id', $classId)
-                  ->where('cs.status', 1)
-                  ->whereNull('cs.deleted_at')
-                  ->whereColumn('cs.school_id', 's.school_id'); // keep same school
+                $q->on('cs.subject_id', '=', 'subjects.id')
+                ->where('cs.class_id', $classId)
+                ->where('cs.status', 1)
+                ->whereNull('cs.deleted_at');
+                // If cs.school_id is reliably filled, you can keep:
+                // ->whereColumn('cs.school_id', 'subjects.school_id');
             })
-            ->whereNull('s.deleted_at')
-            ->orderBy('s.name')
+            ->whereNull('subjects.deleted_at') // now valid because we didn't alias
+            ->orderBy('subjects.name')
             ->get();
     }
 }

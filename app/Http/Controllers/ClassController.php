@@ -14,7 +14,9 @@ class ClassController extends Controller
      */
     public function classList(Request $request)
     {
-        $q = ClassModel::query()->orderBy('name');
+        $q = ClassModel::query()
+            ->with(['creator:id,name,last_name'])    // eager-load creator name
+            ->orderBy('name');
 
         if ($request->filled('name')) {
             $q->where('name', 'like', '%'.$request->name.'%');

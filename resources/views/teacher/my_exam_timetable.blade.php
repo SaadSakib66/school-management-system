@@ -45,9 +45,19 @@
                   </select>
                 </div>
 
-                <div class="col-md-4">
+                <div class="col-md-4 d-flex gap-2 align-items-end">
                   <button type="submit" class="btn btn-primary">Search</button>
                   <a href="{{ route('teacher.my-exam-timetable') }}" class="btn btn-success">Reset</a>
+
+                  {{-- NEW: Download — submits current selection to the download route --}}
+                  <button type="submit"
+                          class="btn btn-danger"
+                          formaction="{{ route('teacher.my-exam-timetable.download') }}"
+                          formmethod="GET"
+                          formtarget="_blank"
+                          {{ $selectedClassId && $selectedExamId ? '' : 'disabled' }}>
+                    Download
+                  </button>
                 </div>
               </form>
             </div>
@@ -62,13 +72,13 @@
                 <table class="table table-striped mb-0">
                   <thead>
                     <tr>
-                      <th style="width:10%">Subject</th>
-                      <th style="width:10%">Date</th>
+                      <th style="width:20%">Subject</th>
+                      <th style="width:15%">Date</th>
                       <th style="width:15%">Start</th>
                       <th style="width:15%">End</th>
                       <th style="width:15%">Room</th>
-                      <th style="width:20%">Full Marks</th>
-                      <th style="width:20%">Pass Marks</th>
+                      <th style="width:10%">Full Marks</th>
+                      <th style="width:10%">Pass Marks</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -104,7 +114,7 @@
 <script>
   const classSel = document.getElementById('class_id');
   const examSel  = document.getElementById('exam_id');
-  const baseExamsUrl = @json(url('teacher/my_exam_timetable/exams')); // => "/teacher/my_exam_timetable/exams"
+  const baseExamsUrl = @json(url('teacher/my_exam_timetable/exams')); // "/teacher/my_exam_timetable/exams"
 
   classSel?.addEventListener('change', async function () {
     const classId = this.value;

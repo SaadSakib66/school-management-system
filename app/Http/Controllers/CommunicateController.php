@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class CommunicateController extends Controller
 {
@@ -45,6 +46,20 @@ class CommunicateController extends Controller
             'header_title' => 'Notice Board',
             'notices'      => $notices,
         ]);
+    }
+
+
+    public function downloadNotice($id)
+    {
+        $notice = \App\Models\Notice::with('creator:id,name,email')->findOrFail((int)$id);
+
+        $file = 'Notice-'.\Illuminate\Support\Str::slug($notice->title).'-'.$notice->id.'.pdf';
+
+        $pdf = Pdf::loadView('pdf.notice', ['notice' => $notice])
+                ->setPaper('A4');
+
+        // 👇 Inline (preview) instead of attachment download
+        return $pdf->stream($file, ['Attachment' => false]);
     }
 
     public function AddNoticeBoard()

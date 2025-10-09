@@ -11,66 +11,41 @@ use App\Models\ClassSubject;
 use App\Models\ClassModel;
 use App\Models\Subject;
 
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Str;
 class ClassSubjectController extends Controller
 {
     /**
      * List assignments (scoped by SchoolScope). Optional filters.
      */
-    // public function assignSubjectList(Request $request)
-    // {
-    //     $q = ClassSubject::query()
-    //         ->with(['class:id,name', 'subject:id,name'])
-    //         ->orderByDesc('id');
-
-    //     if ($request->filled('class_id')) {
-    //         $q->where('class_id', (int) $request->class_id);
-    //     }
-
-    //     if ($request->filled('subject_id')) {
-    //         $q->where('subject_id', (int) $request->subject_id);
-    //     }
-
-    //     if ($request->filled('status') && in_array((int)$request->status, [0,1], true)) {
-    //         $q->where('status', (int)$request->status);
-    //     }
-
-    //     $data['getRecord']    = $q->paginate(15)->appends($request->except('page'));
-    //     $data['header_title'] = 'Assign Subject List';
-
-    //     // (Optional) populate filter dropdowns
-    //     $data['getClass']   = ClassModel::orderBy('name')->get(['id','name']);
-    //     $data['getSubject'] = Subject::orderBy('name')->get(['id','name']);
-
-    //     return view('admin.assign_subject.list', $data);
-    // }
 
     public function assignSubjectList(Request $request)
-{
-    $q = ClassSubject::query()
-        ->leftJoin('classes as c', 'c.id', '=', 'class_subjects.class_id')
-        ->leftJoin('subjects as s', 's.id', '=', 'class_subjects.subject_id')
-        ->leftJoin('users as u', 'u.id', '=', 'class_subjects.created_by')
-        ->select([
-            'class_subjects.*',
-            'c.name as class_name',
-            's.name as subject_name',
-            'u.name as created_by_name',
-        ])
-        ->orderByDesc('class_subjects.id');
+    {
+        $q = ClassSubject::query()
+            ->leftJoin('classes as c', 'c.id', '=', 'class_subjects.class_id')
+            ->leftJoin('subjects as s', 's.id', '=', 'class_subjects.subject_id')
+            ->leftJoin('users as u', 'u.id', '=', 'class_subjects.created_by')
+            ->select([
+                'class_subjects.*',
+                'c.name as class_name',
+                's.name as subject_name',
+                'u.name as created_by_name',
+            ])
+            ->orderByDesc('class_subjects.id');
 
-    if ($request->filled('class_id'))    $q->where('class_subjects.class_id', (int) $request->class_id);
-    if ($request->filled('subject_id'))  $q->where('class_subjects.subject_id', (int) $request->subject_id);
-    if ($request->filled('status') && in_array((int)$request->status, [0,1], true)) {
-        $q->where('class_subjects.status', (int)$request->status);
+        if ($request->filled('class_id'))    $q->where('class_subjects.class_id', (int) $request->class_id);
+        if ($request->filled('subject_id'))  $q->where('class_subjects.subject_id', (int) $request->subject_id);
+        if ($request->filled('status') && in_array((int)$request->status, [0,1], true)) {
+            $q->where('class_subjects.status', (int)$request->status);
+        }
+
+        $data['getRecord']    = $q->paginate(15)->appends($request->except('page'));
+        $data['header_title'] = 'Assign Subject List';
+        $data['getClass']     = ClassModel::orderBy('name')->get(['id','name']);
+        $data['getSubject']   = Subject::orderBy('name')->get(['id','name']);
+
+        return view('admin.assign_subject.list', $data);
     }
-
-    $data['getRecord']    = $q->paginate(15)->appends($request->except('page'));
-    $data['header_title'] = 'Assign Subject List';
-    $data['getClass']     = ClassModel::orderBy('name')->get(['id','name']);
-    $data['getSubject']   = Subject::orderBy('name')->get(['id','name']);
-
-    return view('admin.assign_subject.list', $data);
-}
 
 
     /**
@@ -248,4 +223,78 @@ class ClassSubjectController extends Controller
             ->route('admin.assign-subject.list')
             ->with('success', 'Subject status updated successfully.');
     }
+
+
+public function download(Request $request)
+{
+    // Build the same query as the list, but for export
+    $q = ClassSubject::query()
+        ->leftJoin('classes as c', 'c.id', '=', 'class_subjects.class_id')
+        ->leftJoin('subjects as s', 's.id', '=', 'class_subjects.subject_id')
+        ->leftJoin('users as u', 'u.id', '=', 'class_subjects.created_by')
+        ->select([
+            'class_subjects.*',
+            'c.name as class_name',
+            's.name as subject_name',
+            'u.name as created_by_name',
+        ])
+        ->orderBy('c.name')
+        ->orderBy('s.name');
+
+    // -------- Normalize filters (handles "1"/"0" and "active"/"inactive") --------
+    $classId   = $request->filled('class_id')   ? (int) $request->class_id   : null;
+    $subjectId = $request->filled('subject_id') ? (int) $request->subject_id : null;
+
+    $statusRaw = $request->input('status', null);
+    $status    = null;
+    if ($statusRaw !== null && $statusRaw !== '') {
+        $statusMap = [
+            '1' => 1, '0' => 0,
+            'active' => 1, 'inactive' => 0,
+        ];
+        $key = is_string($statusRaw) ? strtolower(trim($statusRaw)) : (string) $statusRaw;
+        if (array_key_exists($key, $statusMap)) {
+            $status = $statusMap[$key];
+        } elseif (is_numeric($statusRaw)) {
+            $status = (int) $statusRaw;
+        }
+    }
+    // ---------------------------------------------------------------------------
+
+    if (!is_null($classId))   $q->where('class_subjects.class_id', $classId);
+    if (!is_null($subjectId)) $q->where('class_subjects.subject_id', $subjectId);
+    if (!is_null($status))    $q->where('class_subjects.status', $status);
+
+    $records = $q->get();
+
+    // Data to the view
+    $data = [
+        'records' => $records,
+        'filters' => [
+            'class_id'   => $classId,
+            'subject_id' => $subjectId,
+            'status'     => $status, // 1/0 or null
+        ],
+    ];
+
+    // Dynamic filename
+    $fileName = 'assign-subjects';
+    if (!is_null($classId)) {
+        $class = \App\Models\ClassModel::find($classId);
+        if ($class) $fileName .= '-' . Str::slug($class->name);
+    }
+    if (!is_null($status)) {
+        $fileName .= '-' . ($status === 1 ? 'active' : 'inactive');
+    }
+    $fileName .= '.pdf';
+
+    // Grouped-by-class PDF (landscape is nicer for tables)
+    $pdf = Pdf::loadView('pdf.assign_subject_list', $data)
+              ->setPaper('A4', 'landscape');
+
+    return $pdf->stream($fileName, ['Attachment' => false]);
+}
+
+
+
 }

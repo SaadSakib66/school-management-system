@@ -12,6 +12,7 @@ use App\Models\Attendance;
 use App\Models\ClassModel;
 use App\Models\User;
 use App\Models\AssignClassTeacherModel;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class AttendanceController extends Controller
 {
@@ -423,99 +424,307 @@ class AttendanceController extends Controller
     /* =========================================================================
      | ADMIN: Attendance report
      * =========================================================================*/
-    public function attendanceReport(Request $request)
-    {
-        $data['header_title'] = 'Attendance Report';
+    // public function attendanceReport(Request $request)
+    // {
+    //     $data['header_title'] = 'Attendance Report';
 
-        // Classes dropdown (scoped)
-        $data['classes'] = ClassModel::orderBy('name')->get(['id','name']);
+    //     // Classes dropdown (scoped)
+    //     $data['classes'] = ClassModel::orderBy('name')->get(['id','name']);
 
-        // Filters
-        $data['today']           = Carbon::today()->format('Y-m-d');
-        $data['selectedClassId'] = $request->integer('class_id') ?: null;
-        $data['selectedDate']    = $request->get('attendance_date') ?: null; // expects Y-m-d
-        $data['selectedType']    = $request->get('attendance_type');         // '', '1'..'4'
+    //     // Filters
+    //     $data['today']           = Carbon::today()->format('Y-m-d');
+    //     $data['selectedClassId'] = $request->integer('class_id') ?: null;
+    //     $data['selectedDate']    = $request->get('attendance_date') ?: null; // expects Y-m-d
+    //     $data['selectedType']    = $request->get('attendance_type');         // '', '1'..'4'
 
-        $typeMap = method_exists(Attendance::class,'typeMap')
-            ? Attendance::typeMap()
-            : [1=>'Present', 2=>'Late', 3=>'Half Day', 4=>'Absent'];
+    //     $typeMap = method_exists(Attendance::class,'typeMap')
+    //         ? Attendance::typeMap()
+    //         : [1=>'Present', 2=>'Late', 3=>'Half Day', 4=>'Absent'];
 
-        $records = null;
+    //     $records = null;
 
-        if ($data['selectedClassId'] && $data['selectedDate']) {
-            $q = Attendance::with([
-                    'student:id,name,last_name,roll_number',
-                    'creator:id,name,last_name',
-                ])
-                ->where('class_id', $data['selectedClassId'])
-                ->whereDate('attendance_date', $data['selectedDate']);
+    //     if ($data['selectedClassId'] && $data['selectedDate']) {
+    //         $q = Attendance::with([
+    //                 'student:id,name,last_name,roll_number',
+    //                 'creator:id,name,last_name',
+    //             ])
+    //             ->where('class_id', $data['selectedClassId'])
+    //             ->whereDate('attendance_date', $data['selectedDate']);
 
-            if (in_array((int)$data['selectedType'], [1,2,3,4], true)) {
-                $q->where('attendance_type', (int)$data['selectedType']);
-            }
+    //         if (in_array((int)$data['selectedType'], [1,2,3,4], true)) {
+    //             $q->where('attendance_type', (int)$data['selectedType']);
+    //         }
 
-            $records = $q->orderBy('student_id')
-                        ->paginate(25)
-                        ->appends($request->except('page'));
+    //         $records = $q->orderBy('student_id')
+    //                     ->paginate(25)
+    //                     ->appends($request->except('page'));
+    //     }
+
+    //     return view('admin.attendance.report', $data + [
+    //         'records' => $records,
+    //         'typeMap' => $typeMap,
+    //     ]);
+    // }
+
+public function attendanceReport(Request $request)
+{
+    $data['header_title'] = 'Attendance Report';
+    $data['classes'] = ClassModel::orderBy('name')->get(['id','name']);
+
+    // Filters
+    $data['today']           = Carbon::today()->format('Y-m-d');
+    $data['selectedClassId'] = $request->integer('class_id') ?: null;
+    $data['selectedDate']    = $request->get('attendance_date') ?: null; // single date (optional if range used)
+    $data['dateFrom']        = $request->get('date_from') ?: null;       // NEW
+    $data['dateTo']          = $request->get('date_to') ?: null;         // NEW
+    $data['selectedType']    = $request->get('attendance_type');         // '', '1'..'4'
+    $data['selectedStudent'] = $request->integer('student_id') ?: null;  // NEW
+
+    // Populate students dropdown when class selected
+    $students = collect();
+    if ($data['selectedClassId']) {
+        $students = User::where('role','student')
+            ->where('class_id', $data['selectedClassId'])
+            ->orderBy('roll_number')->orderBy('name')
+            ->get(['id','name','last_name','roll_number']);
+    }
+    $data['students'] = $students;
+
+    $typeMap = method_exists(Attendance::class,'typeMap')
+        ? Attendance::typeMap()
+        : [1=>'Present', 2=>'Late', 3=>'Half Day', 4=>'Absent'];
+
+    $records = null;
+
+    // Build query if have either single date or a date range
+    if ($data['selectedClassId'] && ($data['selectedDate'] || ($data['dateFrom'] && $data['dateTo']))) {
+        $q = Attendance::with(['student:id,name,last_name,roll_number','creator:id,name,last_name'])
+            ->where('class_id', $data['selectedClassId']);
+
+        if ($data['selectedDate']) {
+            $q->whereDate('attendance_date', $data['selectedDate']);
+        } else {
+            $q->whereBetween('attendance_date', [$data['dateFrom'], $data['dateTo']]);
         }
 
-        return view('admin.attendance.report', $data + [
-            'records' => $records,
-            'typeMap' => $typeMap,
-        ]);
+        if (in_array((int)$data['selectedType'], [1,2,3,4], true)) {
+            $q->where('attendance_type', (int)$data['selectedType']);
+        }
+
+        if ($data['selectedStudent']) {
+            $q->where('student_id', $data['selectedStudent']);
+        }
+
+        $records = $q->orderBy('attendance_date')->orderBy('student_id')
+            ->paginate(25)
+            ->appends($request->except('page'));
     }
+
+    return view('admin.attendance.report', $data + [
+        'records' => $records,
+        'typeMap' => $typeMap,
+    ]);
+}
 
     /* =========================================================================
      | TEACHER: Attendance report
      * =========================================================================*/
-    public function teacherAttendanceReport(Request $request)
-    {
+
+public function teacherAttendanceReport(Request $request)
+{
+    $teacher = Auth::user();
+    abort_unless($teacher && $teacher->role === 'teacher', 403);
+
+    $data['header_title'] = 'Attendance Report';
+    $classes = AssignClassTeacherModel::getTeacherClasses($teacher->id); // returns id,name
+    $data['classes'] = $classes;
+
+    // Filters
+    $data['today']           = Carbon::today()->format('Y-m-d');
+    $data['selectedClassId'] = $request->integer('class_id') ?: null;
+    $data['selectedDate']    = $request->get('attendance_date') ?: null;
+    $data['dateFrom']        = $request->get('date_from') ?: null;   // NEW
+    $data['dateTo']          = $request->get('date_to') ?: null;     // NEW
+    $data['selectedType']    = $request->get('attendance_type');     // '', '1'..'4'
+    $data['selectedStudent'] = $request->integer('student_id') ?: null; // NEW
+
+    if ($data['selectedClassId'] && !$classes->pluck('id')->contains($data['selectedClassId'])) {
+        abort(403, 'You are not assigned to this class.');
+    }
+
+    // Populate students dropdown when class selected
+    $students = collect();
+    if ($data['selectedClassId']) {
+        $students = User::where('role','student')
+            ->where('class_id', $data['selectedClassId'])
+            ->orderBy('roll_number')->orderBy('name')
+            ->get(['id','name','last_name','roll_number']);
+    }
+    $data['students'] = $students;
+
+    $typeMap = method_exists(Attendance::class,'typeMap')
+        ? Attendance::typeMap()
+        : [1=>'Present', 2=>'Late', 3=>'Half Day', 4=>'Absent'];
+
+    $records = null;
+
+    if ($data['selectedClassId'] && ($data['selectedDate'] || ($data['dateFrom'] && $data['dateTo']))) {
+        $q = Attendance::with(['student:id,name,last_name,roll_number','creator:id,name,last_name'])
+            ->where('class_id', $data['selectedClassId']);
+
+        if ($data['selectedDate']) {
+            $q->whereDate('attendance_date', $data['selectedDate']);
+        } else {
+            $q->whereBetween('attendance_date', [$data['dateFrom'], $data['dateTo']]);
+        }
+
+        if (in_array((int)$data['selectedType'], [1,2,3,4], true)) {
+            $q->where('attendance_type', (int)$data['selectedType']);
+        }
+
+        if ($data['selectedStudent']) {
+            $q->where('student_id', $data['selectedStudent']);
+        }
+
+        $records = $q->orderBy('attendance_date')->orderBy('student_id')
+            ->paginate(25)
+            ->appends($request->except('page'));
+    }
+
+    return view('teacher.attendance_report', $data + [
+        'records' => $records,
+        'typeMap' => $typeMap,
+    ]);
+}
+
+
+public function attendanceReportDownload(Request $request)
+{
+    // Admin download
+    return $this->buildAttendancePdfAndStream($request, 'admin');
+}
+
+public function teacherAttendanceReportDownload(Request $request)
+{
+    // Teacher download (extra guard: teacher must own the class)
+    return $this->buildAttendancePdfAndStream($request, 'teacher');
+}
+
+/**
+ * Shared PDF builder for Attendance report (Admin/Teacher)
+ *
+ * Query supports:
+ * - class_id (required)
+ * - attendance_date (single date) OR date_from + date_to (range)
+ * - attendance_type (optional: 1..4)
+ * - student_id (optional: single student within the class)
+ *
+ * @param  Request $request
+ * @param  string  $mode     'admin' | 'teacher'
+ * @return \Symfony\Component\HttpFoundation\StreamedResponse
+ */
+protected function buildAttendancePdfAndStream(Request $request, string $mode = 'admin')
+{
+    $today = Carbon::today()->format('Y-m-d');
+
+    // Basic validation
+    $request->validate([
+        'class_id'        => ['required','integer','exists:classes,id'],
+        'attendance_date' => ['nullable','date','before_or_equal:'.$today],
+        'date_from'       => ['nullable','date','before_or_equal:'.$today],
+        'date_to'         => ['nullable','date','before_or_equal:'.$today,'after_or_equal:date_from'],
+        'attendance_type' => ['nullable','in:1,2,3,4'],
+        'student_id'      => ['nullable','integer','exists:users,id'],
+    ]);
+
+    $classId    = (int) $request->class_id;
+    $singleDate = $request->attendance_date ?: null;
+    $dateFrom   = $request->date_from ?: null;
+    $dateTo     = $request->date_to ?: null;
+    $type       = $request->attendance_type ? (int) $request->attendance_type : null;
+    $studentId  = $request->integer('student_id') ?: null;
+
+    // If neither single date nor range provided, default to "today"
+    if (!$singleDate && !($dateFrom && $dateTo)) {
+        $singleDate = $today;
+    }
+
+    // Teacher guard: class must be assigned to this teacher (active)
+    if ($mode === 'teacher') {
         $teacher = Auth::user();
         abort_unless($teacher && $teacher->role === 'teacher', 403);
-
-        $data['header_title'] = 'Attendance Report';
-
-        // Only ACTIVE classes assigned to this teacher (scoped)
-        $classes        = AssignClassTeacherModel::getTeacherClasses($teacher->id); // should return id,name
-        $data['classes'] = $classes;
-
-        // Filters
-        $data['today']           = Carbon::today()->format('Y-m-d');
-        $data['selectedClassId'] = $request->integer('class_id') ?: null;
-        $data['selectedDate']    = $request->get('attendance_date') ?: null; // Y-m-d
-        $data['selectedType']    = $request->get('attendance_type');         // '', '1'..'4'
-
-        // Ensure teacher can only query their own classes
-        if ($data['selectedClassId'] && !$classes->pluck('id')->contains($data['selectedClassId'])) {
-            abort(403, 'You are not assigned to this class.');
-        }
-
-        $typeMap = method_exists(Attendance::class,'typeMap')
-            ? Attendance::typeMap()
-            : [1=>'Present', 2=>'Late', 3=>'Half Day', 4=>'Absent'];
-
-        $records = null;
-
-        if ($data['selectedClassId'] && $data['selectedDate']) {
-            $q = Attendance::with([
-                    'student:id,name,last_name,roll_number',
-                    'creator:id,name,last_name',
-                ])
-                ->where('class_id', $data['selectedClassId'])
-                ->whereDate('attendance_date', $data['selectedDate']);
-
-            if (in_array((int) $data['selectedType'], [1,2,3,4], true)) {
-                $q->where('attendance_type', (int) $data['selectedType']);
-            }
-
-            $records = $q->orderBy('student_id')
-                        ->paginate(25)
-                        ->appends($request->except('page'));
-        }
-
-        return view('teacher.attendance_report', $data + [
-            'records' => $records,
-            'typeMap' => $typeMap,
-        ]);
+        $allowedClassIds = AssignClassTeacherModel::getTeacherClasses($teacher->id)->pluck('id');
+        abort_unless($allowedClassIds->contains($classId), 403, 'Not your class.');
     }
+
+    $class = ClassModel::findOrFail($classId);
+
+    // Build query
+    $q = Attendance::with([
+            'student:id,name,last_name,roll_number',
+            'creator:id,name,last_name',
+        ])
+        ->where('class_id', $classId);
+
+    if ($singleDate) {
+        $q->whereDate('attendance_date', $singleDate);
+    } else {
+        $q->whereBetween('attendance_date', [$dateFrom, $dateTo]);
+    }
+
+    if ($type)      $q->where('attendance_type', $type);
+    if ($studentId) $q->where('student_id', $studentId);
+
+    $rows = $q->orderBy('attendance_date')->orderBy('student_id')->get();
+
+    // Labels
+    $typeMap = method_exists(Attendance::class,'typeMap')
+        ? Attendance::typeMap()
+        : [1=>'Present', 2=>'Late', 3=>'Half Day', 4=>'Absent'];
+
+    // Params for the PDF view
+    $params = [
+        'class'     => $class,
+        'rows'      => $rows,
+        'typeMap'   => $typeMap,
+        'generated' => Carbon::now()->format('d-m-Y g:i A'),
+        'range'     => $singleDate
+            ? ['single' => Carbon::parse($singleDate)->format('d-m-Y')]
+            : [
+                'from' => Carbon::parse($dateFrom)->format('d-m-Y'),
+                'to'   => Carbon::parse($dateTo)->format('d-m-Y'),
+              ],
+        'filter'    => [
+            'type'    => $type ? ($typeMap[$type] ?? 'All') : 'All',
+            'student' => $studentId ? User::find($studentId) : null,
+        ],
+    ];
+
+    // Build filename
+    $fileName = 'Attendance_'
+        . preg_replace('/\s+/', '_', $class->name ?? ('Class_'.$class->id))
+        . '_' . ($singleDate
+                ? ('On_'. $params['range']['single'])
+                : ('From_'.$params['range']['from'].'_To_'.$params['range']['to']))
+        . ($studentId ? ('_Student_'.$studentId) : '')
+        . '.pdf';
+
+    // Render with Dompdf
+    $pdf = Pdf::loadView('pdf.attendance_report', $params)
+        ->setPaper('a4', 'portrait')
+        ->setOptions([
+            'isRemoteEnabled' => true,
+            'dpi'             => 120,
+            'defaultFont'     => 'DejaVu Sans',
+        ]);
+
+    return $pdf->stream($fileName); // or ->download($fileName)
+}
+
+
+
+
+
+
+
 }

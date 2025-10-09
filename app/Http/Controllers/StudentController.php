@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\ClassModel;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Str;
 
 class StudentController extends Controller
 {
@@ -40,19 +42,141 @@ class StudentController extends Controller
      * ADMIN: Students CRUD
      * ----------------------------- */
 
-    public function list()
-    {
-        if ($resp = $this->guardSchoolContext()) return $resp;
+public function list(Request $request)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
 
-        $data['getRecord'] = User::query()
-            ->where('role', 'student')
-            ->ofSchool() // <- strictly current school
-            ->orderBy('name')->orderBy('last_name')
-            ->paginate(20);
+    $schoolId = $this->currentSchoolId();
 
-        $data['header_title'] = 'Student List';
-        return view('admin.student.list', $data);
+    $query = User::query()
+        ->where('role', 'student')
+        ->ofSchool($schoolId)
+        ->with('class') // assuming you have User->class() relation
+        ->orderBy('name')->orderBy('last_name');
+
+    // 🔎 Filters
+    if ($request->filled('name')) {
+        $query->where(function ($q) use ($request) {
+            $q->where('name', 'like', '%'.$request->name.'%')
+              ->orWhere('last_name', 'like', '%'.$request->name.'%');
+        });
     }
+    if ($request->filled('email')) {
+        $query->where('email', 'like', '%'.$request->email.'%');
+    }
+    if ($request->filled('mobile')) {
+        $query->where('mobile_number', 'like', '%'.$request->mobile.'%');
+    }
+    if ($request->filled('gender')) {
+        $query->where('gender', $request->gender);
+    }
+    if ($request->filled('status') && $request->status !== '') {
+        $query->where('status', (int) $request->status);
+    }
+    if ($request->filled('class_id')) {
+        $query->where('class_id', (int) $request->class_id);
+    }
+
+    $data['getRecord'] = $query->paginate(20)->appends($request->all());
+
+    // for class filter dropdown
+    $data['getClass'] = ClassModel::query()
+        ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+        ->orderBy('name')->get(['id','name']);
+
+    $data['header_title'] = 'Student List';
+    return view('admin.student.list', $data);
+}
+
+
+public function download($id)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
+
+    $schoolId = $this->currentSchoolId();
+
+    $student = User::query()
+        ->where('role','student')
+        ->ofSchool($schoolId)
+        ->with('class')
+        ->findOrFail($id);
+
+    // Fetch parent via parent_id (same school, role=parent)
+    $parent = null;
+    if ($student->parent_id) {
+        $parent = User::query()
+            ->where('id', $student->parent_id)
+            ->where('role', 'parent')
+            ->ofSchool($schoolId)
+            ->first();
+    }
+
+    // Helper: try multiple folders on "public" disk and embed as base64
+    $embedFromPublic = function (?string $val, array $dirs) {
+        if (!$val) return null;
+
+        // strip leading 'public/' or 'storage/' if present
+        $normalized = ltrim(str_replace(['public/', 'storage/'], '', $val), '/');
+
+        // Try as-is first (in case full relative path is already stored)
+        $candidates = [$normalized];
+
+        // Also try each provided dir with the basename
+        $basename = basename($normalized);
+        foreach ($dirs as $d) {
+            $candidates[] = trim($d, '/') . '/' . $basename;
+        }
+
+        // Find first existing path
+        $path = null;
+        foreach ($candidates as $cand) {
+            if (Storage::disk('public')->exists($cand)) {
+                $path = $cand;
+                break;
+            }
+        }
+        if (!$path) return null;
+
+        $bin = Storage::disk('public')->get($path);
+
+        // Detect MIME safely
+        $mime = 'image/jpeg';
+        if (class_exists(\finfo::class)) {
+            $fi = new \finfo(FILEINFO_MIME_TYPE);
+            $detected = $fi->buffer($bin);
+            if ($detected) $mime = $detected;
+        } else {
+            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            $map = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp'];
+            if (isset($map[$ext])) $mime = $map[$ext];
+        }
+
+        return 'data:' . $mime . ';base64,' . base64_encode($bin);
+    };
+
+    // Photos:
+    // - Student: try public/storage/student then public/storage/student_photos
+    $studentPhoto = $embedFromPublic($student->student_photo, ['student', 'student_photos']);
+    // - Parent:  try public/storage/parent then public/storage/parent_photos
+    $parentPhoto  = $embedFromPublic($parent->parent_photo ?? null, ['parent', 'parent_photos']);
+
+    $data = [
+        'user'         => $student,
+        'parent'       => $parent,
+        'studentPhoto' => $studentPhoto,
+        'parentPhoto'  => $parentPhoto,
+    ];
+
+    $fileName = \Illuminate\Support\Str::slug(trim(($student->name ?? '') . ' ' . ($student->last_name ?? '')) ?: 'student') . '.pdf';
+
+    $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.student_profile', $data)->setPaper('A4', 'portrait');
+
+    // Inline (new tab handled by target="_blank" on link)
+    return $pdf->stream($fileName, ['Attachment' => false]);
+}
+
+
+
 
     public function add()
     {

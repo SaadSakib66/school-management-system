@@ -21,10 +21,12 @@
           <div class="card card-primary card-outline mb-4">
             <div class="card-header"><h3 class="card-title">Search Marks Register</h3></div>
             <div class="card-body">
-              <form method="GET" action="{{ route('admin.marks-register.list') }}" class="row g-3 align-items-end">
-                <div class="col-md-4">
-                  <label class="form-label">Exam</label>
-                  <select name="exam_id" id="exam_id" class="form-select">
+              {{-- Use row-cols-lg-auto to keep all controls in one line on large screens --}}
+              <form id="marksFilterForm" method="GET" action="{{ route('admin.marks-register.list') }}" class="row row-cols-lg-auto g-3 align-items-end">
+
+                <div class="col">
+                  <label class="form-label mb-1">Exam</label>
+                  <select name="exam_id" id="exam_id" class="form-select minw-220">
                     <option value="">Select Exam</option>
                     @foreach($exams as $e)
                       <option value="{{ $e->id }}" {{ ($selectedExamId ?? null) == $e->id ? 'selected' : '' }}>
@@ -34,9 +36,9 @@
                   </select>
                 </div>
 
-                <div class="col-md-4">
-                  <label class="form-label">Class</label>
-                  <select name="class_id" id="class_id" class="form-select">
+                <div class="col">
+                  <label class="form-label mb-1">Class</label>
+                  <select name="class_id" id="class_id" class="form-select minw-220">
                     <option value="">Select Class</option>
                     @foreach($classes as $c)
                       <option value="{{ $c->id }}" {{ ($selectedClassId ?? null) == $c->id ? 'selected' : '' }}>
@@ -46,10 +48,28 @@
                   </select>
                 </div>
 
-                <div class="col-md-4">
+                {{-- Student (optional) --}}
+                <div class="col">
+                  <label class="form-label mb-1">Student (optional)</label>
+                  <select name="student_id" id="student_id" class="form-select minw-240">
+                    <option value="">All Students</option>
+                    @if(($selectedClassId ?? null) && ($students ?? collect())->count())
+                      @foreach($students as $stu)
+                        <option value="{{ $stu->id }}" {{ request('student_id') == $stu->id ? 'selected' : '' }}>
+                          {{ $stu->name }} {{ $stu->last_name }}
+                        </option>
+                      @endforeach
+                    @endif
+                  </select>
+                </div>
+
+                {{-- Buttons in the same row, side by side --}}
+                <div class="col d-flex gap-2">
                   <button type="submit" class="btn btn-primary">Search</button>
                   <a href="{{ route('admin.marks-register.list') }}" class="btn btn-success">Reset</a>
+                  <button type="button" id="btnDownload" class="btn btn-outline-secondary">Download Result</button>
                 </div>
+
               </form>
             </div>
           </div>
@@ -203,7 +223,9 @@
 
 @push('styles')
 <style>
-  /* Make the summary row subtle and tight */
+  /* Keep controls from shrinking too small */
+  .minw-220 { min-width: 220px; }
+  .minw-240 { min-width: 240px; }
   .js-student-summary .badge { font-size: .85rem; }
 </style>
 @endpush
@@ -211,7 +233,6 @@
 @push('scripts')
 <script>
 (function(){
-  // Provide from controller (optional): $grades = [{grade_name, percent_from, percent_to}, ...]
   const GRADES = @json($grades ?? []);
 
   function toNum(v){ const n = parseFloat(v); return isNaN(n) ? 0 : n; }
@@ -228,11 +249,9 @@
   function updateCellTotal(cell){
     let sum = 0;
     cell.querySelectorAll('.js-mark').forEach(inp => { sum += toNum(inp.value); });
-
     const totalInput = cell.querySelector('.js-total');
     if (totalInput) totalInput.value = sum ? sum : '';
 
-    // Feedback vs full mark
     const full = parseFloat(cell.dataset.full || '');
     const hint = cell.querySelector('.js-total-hint');
     totalInput && totalInput.classList.remove('is-invalid','is-valid');
@@ -247,7 +266,6 @@
       }
     } else if (hint){ hint.textContent = ''; }
 
-    // Refresh row summary
     const row = cell.closest('tr.js-student-row');
     if (row) updateRowSummary(row);
   }
@@ -264,21 +282,17 @@
       const total = toNum(cell.querySelector('.js-total')?.value);
       const full  = parseFloat(cell.dataset.full || '0');
       const pass  = parseFloat(cell.dataset.pass || '');
-
       grandTotal += total;
       if (!isNaN(full)) grandFull += full;
       if (!isNaN(pass) && total < pass) anyFail = true;
     });
 
-    // Totals
     summary.querySelector('.js-sum-grand').textContent = grandTotal || 0;
     summary.querySelector('.js-sum-full').textContent  = grandFull  || 0;
 
-    // Percentage
     const pct = grandFull > 0 ? (grandTotal * 100 / grandFull) : null;
     summary.querySelector('.js-sum-pct').textContent = formatPercent(pct);
 
-    // Overall
     const overallEl = summary.querySelector('.js-sum-overall');
     overallEl.classList.remove('bg-success','bg-danger','bg-secondary');
     if (grandFull <= 0 && grandTotal === 0){
@@ -292,7 +306,6 @@
       overallEl.classList.add('bg-success');
     }
 
-    // Grade
     const gradeEl = summary.querySelector('.js-sum-grade');
     const g = pickGrade(pct);
     gradeEl.textContent = g;
@@ -311,9 +324,78 @@
       inp.addEventListener('input', () => updateCellTotal(cell));
     });
   });
-
-  // Ensure all rows compute once on load
   document.querySelectorAll('tr.js-student-row').forEach(updateRowSummary);
+
+  // Download handler (next to Reset)
+  const form = document.getElementById('marksFilterForm');
+  const btn  = document.getElementById('btnDownload');
+  if(btn && form){
+    btn.addEventListener('click', function(){
+      const exam  = form.querySelector('#exam_id')?.value;
+      const klass = form.querySelector('#class_id')?.value;
+      if(!exam || !klass){
+        alert('Please select both Exam and Class before downloading.');
+        return;
+      }
+      const params = new URLSearchParams(new FormData(form));
+      const url = "{{ route('admin.marks-register.download') }}" + "?" + params.toString();
+      window.open(url, '_blank');
+    });
+  }
+})();
+
+(function(){
+  const classSel   = document.getElementById('class_id');
+  const studentSel = document.getElementById('student_id');
+  if (!classSel || !studentSel) return;
+
+  const STUDENTS_URL_BASE = @json(route('admin.marks-register.students', ['class' => 0])); // "/admin/marks_register/students/0"
+
+  function resetStudents(placeholder) {
+    studentSel.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = placeholder || 'All Students';
+    studentSel.appendChild(opt);
+  }
+
+  async function loadStudentsForClass(classId, preselectId) {
+    resetStudents('Loading...');
+    if (!classId) { resetStudents('All Students'); return; }
+
+    const url = STUDENTS_URL_BASE.replace(/\/0$/, '/' + encodeURIComponent(classId));
+    try {
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      resetStudents('All Students');
+      (data || []).forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = s.name;
+        studentSel.appendChild(opt);
+      });
+
+      // restore selection (if we came back from Search)
+      if (preselectId) {
+        const o = [...studentSel.options].find(o => String(o.value) === String(preselectId));
+        if (o) studentSel.value = String(preselectId);
+      }
+    } catch (e) {
+      console.error('Failed to load students:', e);
+      resetStudents('Failed to load');
+    }
+  }
+
+  // On page load: if a class is already selected, fetch its students and preselect the current student_id (if any)
+  const initialClassId   = classSel.value;
+  const initialStudentId = new URLSearchParams(location.search).get('student_id') || '';
+  if (initialClassId) loadStudentsForClass(initialClassId, initialStudentId);
+
+  // When class changes, fetch students
+  classSel.addEventListener('change', () => {
+    loadStudentsForClass(classSel.value, '');
+  });
 })();
 </script>
 @endpush

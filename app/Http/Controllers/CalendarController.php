@@ -9,6 +9,9 @@ use App\Models\ClassModel;
 use App\Models\ClassTimetable;
 use App\Models\Exam;
 use App\Models\ExamSchedule;
+use Barryvdh\DomPDF\Facade\Pdf as PDF;
+use App\Models\Week;
+use Illuminate\Validation\ValidationException;
 
 class CalendarController extends Controller
 {
@@ -232,4 +235,302 @@ class CalendarController extends Controller
             'studentClassName' => $class?->name,
         ]);
     }
+
+
+// public function downloadClassRoutine()
+// {
+//     $student = Auth::user();
+//     abort_unless($student && $student->role === 'student', 403);
+//     abort_if(! $student->class_id, 404, 'No class assigned.');
+
+//     $class = \App\Models\ClassModel::select('id','name')->findOrFail($student->class_id);
+//     $weeks = \App\Models\Week::orderBy('sort')->get(['id','name','sort']);
+
+//     $rows = \App\Models\ClassTimetable::with('subject:id,name','week:id,name,sort')
+//         ->join('class_subjects as cs', function ($j) use ($student) {
+//             $j->on('cs.subject_id', '=', 'class_timetables.subject_id')
+//               ->where('cs.class_id', $student->class_id)
+//               ->where('cs.status', 1)
+//               ->whereNull('cs.deleted_at');
+//         })
+//         ->where('class_timetables.class_id', $student->class_id)
+//         ->select('class_timetables.*')
+//         ->orderBy('class_timetables.week_id')
+//         ->orderBy('class_timetables.start_time')
+//         ->get();
+
+//     // Compact time label: e.g., "12–2 PM", "12:30–2:15 PM", "11 AM–1 PM"
+//     $fmtCompact = function (\Carbon\Carbon $st, ?\Carbon\Carbon $et): string {
+//         $hs = (int) $st->format('g');        // 1..12
+//         $ms = $st->format('i');              // 00..59
+//         $am = $st->format('A');              // AM/PM
+//         if (! $et) {
+//             return $ms === '00' ? "{$hs} {$am}" : "{$hs}:{$ms} {$am}";
+//         }
+//         $he = (int) $et->format('g');
+//         $me = $et->format('i');
+//         $ae = $et->format('A');
+//         $sameMeridiem = ($am === $ae);
+
+//         $left  = $ms === '00' ? (string) $hs : "{$hs}:{$ms}";
+//         $right = $me === '00' ? (string) $he : "{$he}:{$me}";
+
+//         return $sameMeridiem ? "{$left}–{$right} {$am}" : "{$left} {$am}–{$right} {$ae}";
+//     };
+
+//     // Determine grid span (hourly) based on data; bounded to 07:00–19:00
+//     $minStart = $rows->min(fn($r) => $r->start_time ? \Carbon\Carbon::createFromFormat('H:i:s',$r->start_time) : null);
+//     $maxEnd   = $rows->max(function ($r) {
+//         if ($r->end_time) return \Carbon\Carbon::createFromFormat('H:i:s',$r->end_time);
+//         if ($r->start_time) return \Carbon\Carbon::createFromFormat('H:i:s',$r->start_time)->copy()->addHour();
+//         return null;
+//     });
+
+//     $gridStart = $minStart ? $minStart->copy()->minute(0)->second(0) : \Carbon\Carbon::createFromTimeString('07:00:00');
+//     $gridEnd   = $maxEnd   ? $maxEnd->copy()->minute(0)->second(0)   : \Carbon\Carbon::createFromTimeString('19:00:00');
+//     if ($gridEnd->lte($gridStart)) $gridEnd = $gridStart->copy()->addHours(12);
+
+//     // Clamp to keep one-page layout friendly
+//     $gridStart = $gridStart->lt(\Carbon\Carbon::createFromTime(7,0)) ? \Carbon\Carbon::createFromTime(7,0) : $gridStart;
+//     $gridEnd   = $gridEnd->gt(\Carbon\Carbon::createFromTime(19,0)) ? \Carbon\Carbon::createFromTime(19,0) : $gridEnd;
+
+//     // Hourly slot keys (24h) + compact AM/PM labels
+//     $slots = [];
+//     for ($t = $gridStart->copy(); $t->lt($gridEnd); $t->addHour()) {
+//         $startKey  = $t->format('H:i');
+//         $endKey    = $t->copy()->addHour()->format('H:i');
+//         $slotKey   = "{$startKey}-{$endKey}";
+//         $slots[$slotKey] = $fmtCompact($t, $t->copy()->addHour());
+//     }
+
+//     // Build grid; append multiple classes in same cell
+//     $grid = [];
+//     foreach ($rows as $r) {
+//         if (! $r->start_time) continue;
+
+//         $st = \Carbon\Carbon::createFromFormat('H:i:s', $r->start_time);
+//         $et = $r->end_time ? \Carbon\Carbon::createFromFormat('H:i:s', $r->end_time) : null;
+
+//         // Bucket to the hour (e.g., 10:15 -> 10:00–11:00)
+//         $bucketStart = $st->copy()->minute(0)->second(0);
+//         $slotKey = $bucketStart->format('H:i') . '-' . $bucketStart->copy()->addHour()->format('H:i');
+
+//         if (! array_key_exists($slotKey, $slots)) continue; // outside printable window
+
+//         $weekId = (int) $r->week_id;
+
+//         $lines = [];
+//         $lines[] = $r->subject->name ?? 'Class';
+//         $lines[] = $fmtCompact($st, $et);
+//         if (! empty($r->room)) $lines[] = 'Room: ' . $r->room;
+
+//         $cell = implode("\n", $lines);
+
+//         // APPEND if the cell already has another class
+//         $existing = $grid[$slotKey][$weekId] ?? '';
+//         $grid[$slotKey][$weekId] = $existing === '' ? $cell : ($existing . "\n\n" . $cell);
+//     }
+
+//     $params = [
+//         'class'     => $class,
+//         'subject'   => null,
+//         'generated' => now()->format('d M Y g:i A'),
+//         'weeks'     => $weeks,
+//         'slots'     => $slots,
+//         'grid'      => $grid,
+//     ];
+
+//     $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.class_schedule', $params)
+//             ->setPaper('a4', 'landscape');
+
+//     $file = 'Class_Schedule_' . str_replace(' ', '_', $class->name) . '.pdf';
+//     return $pdf->stream($file, ['Attachment' => false]);
+// }
+
+public function downloadClassRoutine()
+{
+    $student = Auth::user();
+    abort_unless($student && $student->role === 'student', 403);
+    abort_if(! $student->class_id, 404, 'No class assigned.');
+
+    $class = \App\Models\ClassModel::select('id','name')->findOrFail($student->class_id);
+    $weeks = \App\Models\Week::orderBy('sort')->get(['id','name','sort']);
+
+    $rows = \App\Models\ClassTimetable::with('subject:id,name','week:id,name,sort')
+        ->join('class_subjects as cs', function ($j) use ($student) {
+            $j->on('cs.subject_id', '=', 'class_timetables.subject_id')
+              ->where('cs.class_id', $student->class_id)
+              ->where('cs.status', 1)
+              ->whereNull('cs.deleted_at');
+        })
+        ->where('class_timetables.class_id', $student->class_id)
+        ->select('class_timetables.*')
+        ->orderBy('class_timetables.week_id')
+        ->orderBy('class_timetables.start_time')
+        ->get();
+
+    // Compact label like "12–2 PM" or "10:30–11:15 AM"
+    $fmtCompact = function (\Carbon\Carbon $st, ?\Carbon\Carbon $et): string {
+        $hs = (int) $st->format('g');  $ms = $st->format('i');  $am = $st->format('A');
+        if (! $et) return $ms === '00' ? "{$hs} {$am}" : "{$hs}:{$ms} {$am}";
+        $he = (int) $et->format('g');  $me = $et->format('i');  $ae = $et->format('A');
+        $left  = $ms === '00' ? (string)$hs : "{$hs}:{$ms}";
+        $right = $me === '00' ? (string)$he : "{$he}:{$me}";
+        return $am === $ae ? "{$left}–{$right} {$am}" : "{$left} {$am}–{$right} {$ae}";
+    };
+
+    // Determine grid span from data; clamp to 07:00–19:00
+    $minStart = $rows->min(fn($r) => $r->start_time ? \Carbon\Carbon::createFromFormat('H:i:s',$r->start_time) : null);
+    $maxEnd   = $rows->max(function ($r) {
+        if ($r->end_time)   return \Carbon\Carbon::createFromFormat('H:i:s',$r->end_time);
+        if ($r->start_time) return \Carbon\Carbon::createFromFormat('H:i:s',$r->start_time)->copy()->addHour();
+        return null;
+    });
+    $gridStart = $minStart ? $minStart->copy()->minute(0)->second(0) : \Carbon\Carbon::createFromTimeString('07:00:00');
+    $gridEnd   = $maxEnd   ? $maxEnd->copy()->minute(0)->second(0)   : \Carbon\Carbon::createFromTimeString('19:00:00');
+    if ($gridEnd->lte($gridStart)) $gridEnd = $gridStart->copy()->addHours(12);
+    $gridStart = $gridStart->lt(\Carbon\Carbon::createFromTime(7,0))  ? \Carbon\Carbon::createFromTime(7,0)  : $gridStart;
+    $gridEnd   = $gridEnd->gt(\Carbon\Carbon::createFromTime(19,0)) ? \Carbon\Carbon::createFromTime(19,0) : $gridEnd;
+
+    // Hour slots (keys 24h, labels compact AM/PM)
+    $slots = [];
+    for ($t = $gridStart->copy(); $t->lt($gridEnd); $t->addHour()) {
+        $startKey = $t->format('H:i'); $endKey = $t->copy()->addHour()->format('H:i');
+        $slots["{$startKey}-{$endKey}"] = $fmtCompact($t, $t->copy()->addHour());
+    }
+
+    // Build grid; APPEND multiple classes in same cell; use room_number
+    $grid = [];
+    foreach ($rows as $r) {
+        if (! $r->start_time) continue;
+        $st = \Carbon\Carbon::createFromFormat('H:i:s', $r->start_time);
+        $et = $r->end_time ? \Carbon\Carbon::createFromFormat('H:i:s', $r->end_time) : null;
+
+        $bucketStart = $st->copy()->minute(0)->second(0);
+        $slotKey = $bucketStart->format('H:i') . '-' . $bucketStart->copy()->addHour()->format('H:i');
+        if (! array_key_exists($slotKey, $slots)) continue;
+
+        $weekId = (int) $r->week_id;
+
+        $lines = [];
+        $lines[] = $r->subject->name ?? 'Class';
+        $lines[] = $fmtCompact($st, $et);
+
+        // ✅ use room_number column (fallback to room if you ever had it)
+        $room = $r->room_number ?? $r->room ?? null;
+        if ($room !== null && $room !== '') $lines[] = 'Room: ' . $room;
+
+        $cell = implode("\n", $lines);
+
+        $existing = $grid[$slotKey][$weekId] ?? '';
+        $grid[$slotKey][$weekId] = $existing === '' ? $cell : ($existing . "\n\n" . $cell);
+    }
+
+    $params = [
+        'class'     => $class,
+        'subject'   => null,
+        'generated' => now()->format('d M Y g:i A'),
+        'weeks'     => $weeks,
+        'slots'     => $slots,
+        'grid'      => $grid,
+    ];
+
+    $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.class_schedule', $params)
+            ->setPaper('a4', 'landscape');
+
+    $file = 'Class_Schedule_' . str_replace(' ', '_', $class->name) . '.pdf';
+    return $pdf->stream($file, ['Attachment' => false]);
+}
+
+
+
+public function downloadExamSchedule(Request $request)
+{
+    $student = Auth::user();
+    abort_unless($student && $student->role === 'student', 403);
+
+    $request->validate([
+        'exam_id' => ['required','integer'],
+    ]);
+
+    $examId = (int) $request->exam_id;
+
+    // Confirm the selected exam actually has schedules for this student's class
+    $exam = Exam::whereIn('id', function ($q) use ($student) {
+            $q->from('exam_schedules as es')
+              ->join('class_subjects as cs', function ($j) use ($student) {
+                  $j->on('cs.subject_id', '=', 'es.subject_id')
+                    ->where('cs.class_id', $student->class_id)
+                    ->where('cs.status', 1)
+                    ->whereNull('cs.deleted_at');
+              })
+              ->select('es.exam_id')
+              ->where('es.class_id', $student->class_id)
+              ->whereNull('es.deleted_at')
+              ->groupBy('es.exam_id');
+        })
+        ->where('id', $examId)
+        ->select('id','name')
+        ->first();
+
+    if (! $exam) {
+        throw ValidationException::withMessages(['exam_id' => 'Invalid exam for your class.']);
+    }
+
+    $class = ClassModel::select('id','name')->findOrFail($student->class_id);
+
+    // Pull rows (subject names included)
+    $rows = ExamSchedule::with('subject:id,name')
+        ->join('class_subjects as cs', function ($j) use ($student) {
+            $j->on('cs.subject_id', '=', 'exam_schedules.subject_id')
+              ->where('cs.class_id', $student->class_id)
+              ->where('cs.status', 1)
+              ->whereNull('cs.deleted_at');
+        })
+        ->where('exam_schedules.class_id', $student->class_id)
+        ->where('exam_schedules.exam_id',  $examId)
+        ->whereNull('exam_schedules.deleted_at')
+        ->select('exam_schedules.*')
+        ->orderBy('exam_schedules.exam_date')
+        ->orderBy('exam_schedules.start_time')
+        ->get();
+
+    // Build flat data for the PDF table
+    $table = [];
+    foreach ($rows as $r) {
+        $dateIso = (string) $r->exam_date;
+        $date    = $dateIso ? \Carbon\Carbon::parse($dateIso) : null;
+
+        $table[] = [
+            'date'         => $date?->format('d-m-Y') ?? '',
+            'day'          => $date?->format('l') ?? '',
+            'time'         => ($r->start_time
+                                ? \Carbon\Carbon::createFromFormat('H:i:s',$r->start_time)->format('h:i A')
+                                : '')
+                             . ($r->end_time
+                                ? ' - ' . \Carbon\Carbon::createFromFormat('H:i:s',$r->end_time)->format('h:i A')
+                                : ''),
+            'subject'      => $r->subject->name ?? '',
+            'room'         => $r->room_number ?? '',
+            'full_mark'    => $r->full_mark !== null ? (string)$r->full_mark : '',
+            'passing_mark' => $r->passing_mark !== null ? (string)$r->passing_mark : '',
+        ];
+    }
+
+    $params = [
+        'title'     => 'EXAM SCHEDULE',
+        'class'     => $class,
+        'exam'      => $exam,
+        'generated' => now()->format('d M Y g:i A'),
+        'rows'      => $table,
+    ];
+
+    $pdf = PDF::loadView('pdf.exam_calendar', $params)->setPaper('a4','portrait');
+    $file = 'Exam_Schedule_' . str_replace(' ','_',$class->name) . '_' . str_replace(' ','_',$exam->name) . '.pdf';
+
+    return $pdf->stream($file, ['Attachment' => false]); // open in new tab
+}
+
+
+
 }

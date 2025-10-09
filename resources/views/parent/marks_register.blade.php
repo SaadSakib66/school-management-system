@@ -58,12 +58,23 @@
                   </div>
                 </div>
 
-                <div class="col-12">
-                  <button type="submit" class="btn btn-primary" {{ $children->isEmpty() ? 'disabled' : '' }}>
-                    Search
-                  </button>
-                  <a href="{{ route('parent.marks-register.list') }}" class="btn btn-success">Reset</a>
-                </div>
+<div class="col-12">
+  <button type="submit" class="btn btn-primary" {{ $children->isEmpty() ? 'disabled' : '' }}>
+    Search
+  </button>
+  <a href="{{ route('parent.marks-register.list') }}" class="btn btn-success">Reset</a>
+
+  {{-- Open PDF in a new tab (inline) --}}
+  <button type="submit"
+          name="download"
+          value="1"
+          class="btn btn-danger"
+          formtarget="_blank"
+          {{ ($selectedStudentId && $selectedExamId) ? '' : 'disabled' }}>
+    Download Result
+  </button>
+</div>
+
 
               </form>
             </div>

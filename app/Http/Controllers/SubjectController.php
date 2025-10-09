@@ -38,12 +38,24 @@ class SubjectController extends Controller
     {
         if ($resp = $this->guardSchoolContext()) return $resp;
 
-        // If Subject model uses BelongsToSchool + SchoolScope, this is already scoped.
-        $data['getRecord'] = Subject::orderBy('name')
-            ->paginate(20)
-            ->appends($request->query());
+        $q = Subject::query()
+            ->with(['creator:id,name,last_name'])
+            ->orderBy('name');
 
+        // Filters
+        if ($request->filled('name')) {
+            $q->where('name', 'like', '%'.$request->name.'%');
+        }
+        if ($request->filled('type')) {
+            $q->where('type', $request->type);
+        }
+        if ($request->filled('status') && in_array((int)$request->status, [0,1], true)) {
+            $q->where('status', (int)$request->status);
+        }
+
+        $data['getRecord']    = $q->paginate(20)->appends($request->query());
         $data['header_title'] = 'Subject List';
+
         return view('admin.subject.list', $data);
     }
 

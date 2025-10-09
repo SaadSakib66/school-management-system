@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\ClassModel;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Str;
 
 class ParentController extends Controller
 {
@@ -40,22 +42,112 @@ class ParentController extends Controller
     /* --------------------------------
      * ADMIN: Parents CRUD
      * -------------------------------- */
-    public function list()
-    {
-        if ($resp = $this->guardSchoolContext()) return $resp;
+public function list(Request $request)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
 
-        // Prefer model helper if it already scopes by school; otherwise filter here
-        $schoolId = $this->currentSchoolId();
+    $schoolId = $this->currentSchoolId();
 
-        $data['getRecord'] = User::query()
-            ->where('role', 'parent')
-            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->orderBy('name')->orderBy('last_name')
-            ->paginate(20);
+    $query = User::query()
+        ->where('role', 'parent')
+        ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+        ->orderBy('name')->orderBy('last_name');
 
-        $data['header_title'] = 'Parent List';
-        return view('admin.parent.list', $data);
+    // 🔎 Filters
+    if ($request->filled('name')) {
+        $query->where(function ($q) use ($request) {
+            $q->where('name', 'like', '%'.$request->name.'%')
+              ->orWhere('last_name', 'like', '%'.$request->name.'%');
+        });
     }
+    if ($request->filled('email')) {
+        $query->where('email', 'like', '%'.$request->email.'%');
+    }
+    if ($request->filled('mobile')) {
+        $query->where('mobile_number', 'like', '%'.$request->mobile.'%');
+    }
+    if ($request->filled('gender')) {
+        $query->where('gender', $request->gender);
+    }
+    if ($request->filled('occupation')) {
+        $query->where('occupation', 'like', '%'.$request->occupation.'%');
+    }
+    if ($request->filled('status') && $request->status !== '') {
+        $query->where('status', (int) $request->status);
+    }
+
+    $data['getRecord'] = $query->paginate(20)->appends($request->all());
+    $data['header_title'] = 'Parent List';
+
+    return view('admin.parent.list', $data);
+}
+
+
+public function download($id)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
+
+    $schoolId = $this->currentSchoolId();
+
+    $parent = User::query()
+        ->where('role','parent')
+        ->when($schoolId, fn($q)=>$q->where('school_id',$schoolId))
+        ->findOrFail($id);
+
+    // Children (students) of this parent (with class)
+    $children = User::query()
+        ->where('role','student')
+        ->when($schoolId, fn($q)=>$q->where('school_id',$schoolId))
+        ->where('parent_id', $parent->id)
+        ->with('class')
+        ->orderBy('name')->orderBy('last_name')
+        ->get();
+
+    // Helper: try multiple folders on public disk and embed as base64
+    $embedFromPublic = function (?string $val, array $dirs) {
+        if (!$val) return null;
+        $normalized = ltrim(str_replace(['public/','storage/'], '', $val), '/');
+        $candidates = [$normalized];
+        $basename   = basename($normalized);
+        foreach ($dirs as $d) {
+            $candidates[] = trim($d, '/') . '/' . $basename;
+        }
+        $path = null;
+        foreach ($candidates as $cand) {
+            if (Storage::disk('public')->exists($cand)) { $path = $cand; break; }
+        }
+        if (!$path) return null;
+
+        $bin = Storage::disk('public')->get($path);
+        $mime = 'image/jpeg';
+        if (class_exists(\finfo::class)) {
+            $fi = new \finfo(FILEINFO_MIME_TYPE);
+            $det = $fi->buffer($bin);
+            if ($det) $mime = $det;
+        } else {
+            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            $map = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp'];
+            if (isset($map[$ext])) $mime = $map[$ext];
+        }
+        return 'data:'.$mime.';base64,'.base64_encode($bin);
+    };
+
+    // Parent photo: try public/storage/parent then public/storage/parent_photos
+    $parentPhoto = $embedFromPublic($parent->parent_photo, ['parent', 'parent_photos']);
+
+    $data = [
+        'parent'      => $parent,
+        'children'    => $children,
+        'parentPhoto' => $parentPhoto,
+    ];
+
+    $fileName = Str::slug(trim(($parent->name ?? '').' '.($parent->last_name ?? '')) ?: 'parent') . '.pdf';
+
+    $pdf = Pdf::loadView('pdf.parent_profile', $data)->setPaper('A4','portrait');
+
+    return $pdf->stream($fileName, ['Attachment' => false]);
+}
+
 
     public function add()
     {

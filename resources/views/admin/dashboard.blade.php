@@ -1,154 +1,181 @@
 @extends('admin.layout.layout')
+
+@push('styles')
+<style>
+  .small-box.gradient-blue    { background: linear-gradient(135deg,#3b82f6,#1d4ed8); color:#fff; }
+  .small-box.gradient-green   { background: linear-gradient(135deg,#22c55e,#15803d); color:#fff; }
+  .small-box.gradient-red     { background: linear-gradient(135deg,#ef4444,#b91c1c); color:#fff; }
+  .small-box.gradient-purple  { background: linear-gradient(135deg,#a855f7,#6d28d9); color:#fff; }
+  .small-box.gradient-amber   { background: linear-gradient(135deg,#f59e0b,#b45309); color:#fff; }
+  .small-box.gradient-teal    { background: linear-gradient(135deg,#14b8a6,#0f766e); color:#fff; }
+  .small-box.gradient-rose    { background: linear-gradient(135deg,#fb7185,#be123c); color:#fff; }
+  .small-box.gradient-sky     { background: linear-gradient(135deg,#38bdf8,#0369a1); color:#fff; }
+  .small-box .inner h3 { font-weight:800; }
+  .chart-h-280 { position: relative; height: 280px; }
+  .chart-h-280 canvas { width:100%!important; height:100%!important; }
+</style>
+@endpush
+
 @section('content')
 <main class="app-main">
-    <!--begin::App Content Header-->
-    <div class="app-content-header">
-        <!--begin::Container-->
-        <div class="container-fluid">
-            <!--begin::Row-->
-            <div class="row">
-                <div class="col-sm-6">
-                    <h3 class="mb-0">Dashboard</h3>
-                </div>
+  <div class="app-content-header">
+    <div class="container-fluid">
+      <div class="row align-items-center">
+        <div class="col-sm-8">
+          <h3 class="mb-0">{{ $stats['header_title'] ?? 'Dashboard' }}</h3>
+          <div class="text-muted">Admin overview — {{ $school->short_name ?? $school->name }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
+  <div class="app-content">
+    <div class="container-fluid">
+
+      {{-- KPI cards --}}
+      <div class="row g-3">
+        <div class="col-lg-3 col-6">
+          <div class="small-box gradient-amber">
+            <div class="inner">
+              <h3>{{ $stats['admins'] ?? 0 }}</h3>
+              <p>Admins</p>
             </div>
-            <!--end::Row-->
+            <i class="small-box-icon bi bi-shield-lock-fill"></i>
+          </div>
         </div>
-        <!--end::Container-->
-    </div>
-    <!--end::App Content Header-->
-    <!--begin::App Content-->
-    <div class="app-content">
-        <!--begin::Container-->
-        <div class="container-fluid">
-            <!--begin::Row-->
-            <div class="row">
-                <!--begin::Col-->
-                <div class="col-lg-3 col-6">
-                    <!--begin::Small Box Widget 1-->
-                    <div class="small-box text-bg-primary">
-                        <div class="inner">
-                            <h3>150</h3>
-                            <p>New Orders</p>
-                        </div>
-                        <svg
-                            class="small-box-icon"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                            aria-hidden="true"
-                            >
-                            <path
-                                d="M2.25 2.25a.75.75 0 000 1.5h1.386c.17 0 .318.114.362.278l2.558 9.592a3.752 3.752 0 00-2.806 3.63c0 .414.336.75.75.75h15.75a.75.75 0 000-1.5H5.378A2.25 2.25 0 017.5 15h11.218a.75.75 0 00.674-.421 60.358 60.358 0 002.96-7.228.75.75 0 00-.525-.965A60.864 60.864 0 005.68 4.509l-.232-.867A1.875 1.875 0 003.636 2.25H2.25zM3.75 20.25a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM16.5 20.25a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"
-                                ></path>
-                        </svg>
-                        <a
-                            href="#"
-                            class="small-box-footer link-light link-underline-opacity-0 link-underline-opacity-50-hover"
-                            >
-                        More info <i class="bi bi-link-45deg"></i>
-                        </a>
-                    </div>
-                    <!--end::Small Box Widget 1-->
-                </div>
-                <!--end::Col-->
-                <div class="col-lg-3 col-6">
-                    <!--begin::Small Box Widget 2-->
-                    <div class="small-box text-bg-success">
-                        <div class="inner">
-                            <h3>53<sup class="fs-5">%</sup></h3>
-                            <p>Bounce Rate</p>
-                        </div>
-                        <svg
-                            class="small-box-icon"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                            aria-hidden="true"
-                            >
-                            <path
-                                d="M18.375 2.25c-1.035 0-1.875.84-1.875 1.875v15.75c0 1.035.84 1.875 1.875 1.875h.75c1.035 0 1.875-.84 1.875-1.875V4.125c0-1.036-.84-1.875-1.875-1.875h-.75zM9.75 8.625c0-1.036.84-1.875 1.875-1.875h.75c1.036 0 1.875.84 1.875 1.875v11.25c0 1.035-.84 1.875-1.875 1.875h-.75a1.875 1.875 0 01-1.875-1.875V8.625zM3 13.125c0-1.036.84-1.875 1.875-1.875h.75c1.036 0 1.875.84 1.875 1.875v6.75c0 1.035-.84 1.875-1.875 1.875h-.75A1.875 1.875 0 013 19.875v-6.75z"
-                                ></path>
-                        </svg>
-                        <a
-                            href="#"
-                            class="small-box-footer link-light link-underline-opacity-0 link-underline-opacity-50-hover"
-                            >
-                        More info <i class="bi bi-link-45deg"></i>
-                        </a>
-                    </div>
-                    <!--end::Small Box Widget 2-->
-                </div>
-                <!--end::Col-->
-                <div class="col-lg-3 col-6">
-                    <!--begin::Small Box Widget 3-->
-                    <div class="small-box text-bg-warning">
-                        <div class="inner">
-                            <h3>44</h3>
-                            <p>User Registrations</p>
-                        </div>
-                        <svg
-                            class="small-box-icon"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                            aria-hidden="true"
-                            >
-                            <path
-                                d="M6.25 6.375a4.125 4.125 0 118.25 0 4.125 4.125 0 01-8.25 0zM3.25 19.125a7.125 7.125 0 0114.25 0v.003l-.001.119a.75.75 0 01-.363.63 13.067 13.067 0 01-6.761 1.873c-2.472 0-4.786-.684-6.76-1.873a.75.75 0 01-.364-.63l-.001-.122zM19.75 7.5a.75.75 0 00-1.5 0v2.25H16a.75.75 0 000 1.5h2.25v2.25a.75.75 0 001.5 0v-2.25H22a.75.75 0 000-1.5h-2.25V7.5z"
-                                ></path>
-                        </svg>
-                        <a
-                            href="#"
-                            class="small-box-footer link-dark link-underline-opacity-0 link-underline-opacity-50-hover"
-                            >
-                        More info <i class="bi bi-link-45deg"></i>
-                        </a>
-                    </div>
-                    <!--end::Small Box Widget 3-->
-                </div>
-                <!--end::Col-->
-                <div class="col-lg-3 col-6">
-                    <!--begin::Small Box Widget 4-->
-                    <div class="small-box text-bg-danger">
-                        <div class="inner">
-                            <h3>65</h3>
-                            <p>Unique Visitors</p>
-                        </div>
-                        <svg
-                            class="small-box-icon"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                            aria-hidden="true"
-                            >
-                            <path
-                                clip-rule="evenodd"
-                                fill-rule="evenodd"
-                                d="M2.25 13.5a8.25 8.25 0 018.25-8.25.75.75 0 01.75.75v6.75H18a.75.75 0 01.75.75 8.25 8.25 0 01-16.5 0z"
-                                ></path>
-                            <path
-                                clip-rule="evenodd"
-                                fill-rule="evenodd"
-                                d="M12.75 3a.75.75 0 01.75-.75 8.25 8.25 0 018.25 8.25.75.75 0 01-.75.75h-7.5a.75.75 0 01-.75-.75V3z"
-                                ></path>
-                        </svg>
-                        <a
-                            href="#"
-                            class="small-box-footer link-light link-underline-opacity-0 link-underline-opacity-50-hover"
-                            >
-                        More info <i class="bi bi-link-45deg"></i>
-                        </a>
-                    </div>
-                    <!--end::Small Box Widget 4-->
-                </div>
-                <!--end::Col-->
+
+        <div class="col-lg-3 col-6">
+          <div class="small-box gradient-teal">
+            <div class="inner">
+              <h3>{{ $stats['teachers'] ?? 0 }}</h3>
+              <p>Teachers</p>
             </div>
-            <!--end::Row-->
-            <!-- /.row (main row) -->
+            <i class="small-box-icon bi bi-mortarboard-fill"></i>
+          </div>
         </div>
-        <!--end::Container-->
+
+        <div class="col-lg-3 col-6">
+          <div class="small-box gradient-sky">
+            <div class="inner">
+              <h3>{{ $stats['students'] ?? 0 }}</h3>
+              <p>Students</p>
+            </div>
+            <i class="small-box-icon bi bi-journal-text"></i>
+          </div>
+        </div>
+
+        <div class="col-lg-3 col-6">
+          <div class="small-box gradient-rose">
+            <div class="inner">
+              <h3>{{ $stats['parents'] ?? 0 }}</h3>
+              <p>Parents</p>
+            </div>
+            <i class="small-box-icon bi bi-person-heart"></i>
+          </div>
+        </div>
+
+        <div class="col-lg-3 col-6">
+          <div class="small-box gradient-green">
+            <div class="inner">
+              <h3>{{ $stats['exams_upcoming_30'] ?? 0 }}</h3>
+              <p>Exams (Next 30d)</p>
+            </div>
+            <i class="small-box-icon bi bi-calendar2-check"></i>
+          </div>
+        </div>
+      </div>
+
+      {{-- Users by Role chart --}}
+      <div class="row g-3 mb-5">
+        <div class="col-lg-6">
+          <div class="card shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <h3 class="card-title mb-0">Users by Role</h3>
+              <span class="badge text-bg-light">Overview</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-h-280">
+                <canvas id="rolesBar"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {{-- Recent Users table (optional) --}}
+      @isset($recentUsers)
+        <div class="card shadow-sm mt-3">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <h3 class="card-title mb-0"><i class="bi bi-clock-history me-2"></i>Recent Users</h3>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Email</th>
+                    <th>Joined</th>
+                    <th>Last Login</th>
+                  </tr>
+                </thead>
+                <tbody>
+                    @forelse($recentUsers as $u)
+                    <tr>
+                    <td>{{ $u->name }} {{ $u->last_name }}</td>
+                    <td class="text-capitalize">{{ $u->role }}</td>
+                    <td>{{ $u->email }}</td>
+                    <td>{{ optional($u->created_at)->format('d M Y') }}</td>
+                    <td>
+                        @if(!empty($u->last_login_at))
+                        {{ \Carbon\Carbon::parse($u->last_login_at)->format('d M Y, h:i A') }}
+                        @else
+                        <span class="text-muted">Never</span>
+                        @endif
+                    </td>
+                    </tr>
+                    @empty
+                    <tr><td colspan="5" class="text-center text-muted p-4">No recent users.</td></tr>
+                @endforelse
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      @endisset
+
     </div>
-    <!--end::App Content-->
+  </div>
 </main>
 @endsection
+
+@push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  const rolesBarEl = document.getElementById('rolesBar');
+  if (rolesBarEl) {
+    new Chart(rolesBarEl, {
+      type: 'bar',
+      data: {
+        labels: ['Admins', 'Teachers', 'Students', 'Parents'],
+        datasets: [{
+          label: 'Users',
+          data: [
+            {{ $stats['admins'] ?? 0 }},
+            {{ $stats['teachers'] ?? 0 }},
+            {{ $stats['students'] ?? 0 }},
+            {{ $stats['parents'] ?? 0 }}
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+  }
+</script>
+@endpush
