@@ -30,6 +30,8 @@ use App\Http\Controllers\LandingpageController;
 use App\Http\Controllers\Admin\FeeStructureController;
 use App\Http\Controllers\Admin\FeeInvoiceController;
 use App\Http\Controllers\Admin\FeeReportController;
+use App\Http\Controllers\ParentPanel\ChildFeesController;
+use App\Http\Controllers\Student\MyFeesController;
 
 /*
 |--------------------------------------------------------------------------
@@ -280,6 +282,7 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
         Route::get('invoices/generate', [FeeInvoiceController::class, 'generateForm'])->name('invoices.generate.form');
         Route::post('invoices/generate', [FeeInvoiceController::class, 'generate'])->name('invoices.generate');
         Route::get('invoices/{id}', [FeeInvoiceController::class, 'show'])->name('invoices.show');
+        Route::get('invoices/{id}/pdf', [FeeInvoiceController::class, 'pdf'])->name('invoices.pdf');
 
         // Payments (manual collection)
         Route::post('invoices/{id}/payments', [FeeInvoiceController::class, 'storePayment'])->name('invoices.payments.store');
@@ -287,6 +290,10 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
 
         // Reports
         Route::get('reports/class-monthly', [FeeReportController::class, 'classMonthly'])->name('reports.class-monthly');
+        Route::get('class-monthly/pdf',    [FeeReportController::class, 'classMonthlyPdf'])->name('class_monthly.pdf');
+
+        Route::get('student-statement',     [FeeReportController::class, 'studentStatement'])->name('student_statement');
+        Route::get('student-statement/pdf', [FeeReportController::class, 'studentStatementPdf'])->name('student_statement.pdf');
         Route::get('reports/student-statement', [FeeReportController::class, 'studentStatement'])->name('reports.student-statement');
     });
 
@@ -356,7 +363,7 @@ Route::prefix('teacher')->middleware(['auth', 'teacher', 'school.active'])->grou
 */
 Route::prefix('student')->middleware(['auth', 'student', 'school.active'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'dashboard'])->name('student.dashboard');
-    // Route::get('my-fees', [\App\Http\Controllers\Student\MyFeesController::class, 'index'])->name('student.fees.index');
+    Route::get('my-fees', [MyFeesController::class, 'index'])->name('student.fees.index');
 
     // Account
     Route::get('account',         [UserController::class, 'myAccount'])->name('student.account');
@@ -400,6 +407,7 @@ Route::prefix('student')->middleware(['auth', 'student', 'school.active'])->grou
 */
 Route::prefix('parent')->middleware(['auth', 'parent', 'school.active'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'dashboard'])->name('parent.dashboard');
+    Route::get('child-fees', [ChildFeesController::class, 'index'])->name('parent.fees.index');
 
     // Account
     Route::get('account',         [UserController::class, 'myAccount'])->name('parent.account');

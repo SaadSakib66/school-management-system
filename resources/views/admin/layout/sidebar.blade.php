@@ -102,6 +102,35 @@
                         </a>
                     </li>
 
+                    {{-- ===================== FEES (Admin) ===================== --}}
+                    <li class="nav-item {{ request()->routeIs('admin.fees.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('admin.fees.*') ? 'active' : '' }}">
+                            <i class="nav-icon bi bi-cash-coin"></i>
+                            <p>Fees <i class="nav-arrow bi bi-chevron-right"></i></p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            <li class="nav-item">
+                                <a href="{{ route('admin.fees.structures.index') }}"
+                                class="nav-link {{ request()->routeIs('admin.fees.structures.*') ? 'active' : '' }}">
+                                    <i class="bi bi-circle nav-icon"></i><p>Fee Structure</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('admin.fees.invoices.index') }}"
+                                class="nav-link {{ request()->routeIs('admin.fees.invoices.*') ? 'active' : '' }}">
+                                    <i class="bi bi-circle nav-icon"></i><p>Payments</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('admin.fees.reports.class-monthly') }}"
+                                class="nav-link {{ request()->routeIs('admin.fees.reports.*') ? 'active' : '' }}">
+                                    <i class="bi bi-circle nav-icon"></i><p>Reports</p>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+
+
                     <li class="nav-item {{ request()->routeIs('admin.class.*') || request()->routeIs('admin.subject.*') || request()->routeIs('admin.assign-subject.*') || request()->routeIs('admin.assign-class-teacher.*') || request()->routeIs('admin.class-timetable.*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('admin.class.*') || request()->routeIs('admin.subject.*') || request()->routeIs('admin.assign-subject.*') || request()->routeIs('admin.assign-class-teacher.*') || request()->routeIs('admin.class-timetable.*') ? 'active' : '' }}">
                             <i class="nav-icon bi bi-journal-bookmark"></i>
@@ -254,6 +283,11 @@
                     <li class="nav-item"><a href="{{ route('student.my-exam-timetable') }}" class="nav-link {{ request()->routeIs('student.my-exam-timetable') ? 'active' : '' }}"><i class="nav-icon bi bi-clock-history"></i><p>My Exam Timetable</p></a></li>
                     <li class="nav-item"><a href="{{ route('student.notice-board') }}" class="nav-link {{ request()->routeIs('student.notice-board') ? 'active' : '' }}"><i class="nav-icon bi bi-megaphone"></i><p>Notice Board</p></a></li>
                     <li class="nav-item"><a href="{{ route('student.inbox') }}" class="nav-link {{ request()->routeIs('student.inbox*') ? 'active' : '' }}"><i class="nav-icon bi bi-inbox"></i><p>My Emails</p></a></li>
+                    <li class="nav-item">
+                        <a href="{{ route('student.fees.index') }}" class="nav-link {{ request()->routeIs('student.fees.index') ? 'active' : '' }}">
+                            <i class="nav-icon bi bi-cash-stack"></i><p>My Fees</p>
+                        </a>
+                    </li>
 
                     <li class="nav-item">
                         <a href="{{ route($accountRouteName) }}" class="nav-link {{ $accountActive ? 'active' : '' }}">
@@ -272,7 +306,11 @@
                     <li class="nav-item"><a href="{{ route('parent.marks-register.list') }}" class="nav-link {{ request()->routeIs('parent.marks-register.list') ? 'active' : '' }}"><i class="nav-icon bi bi-123"></i><p>Child Exam Result</p></a></li>
                     <li class="nav-item"><a href="{{ route('parent.notice-board') }}" class="nav-link {{ request()->routeIs('parent.notice-board') ? 'active' : '' }}"><i class="nav-icon bi bi-megaphone"></i><p>Notice Board</p></a></li>
                     <li class="nav-item"><a href="{{ route('parent.inbox') }}" class="nav-link {{ request()->routeIs('parent.inbox*') ? 'active' : '' }}"><i class="nav-icon bi bi-inbox"></i><p>My Emails</p></a></li>
-
+                    <li class="nav-item">
+                        <a href="{{ route('parent.fees.index') }}" class="nav-link {{ request()->routeIs('parent.fees.index') ? 'active' : '' }}">
+                            <i class="nav-icon bi bi-cash"></i><p>Child Fees</p>
+                        </a>
+                    </li>
                     <li class="nav-item">
                         <a href="{{ route($accountRouteName) }}" class="nav-link {{ $accountActive ? 'active' : '' }}">
                             <i class="nav-icon bi bi-person-circle"></i><p>My Account</p>
