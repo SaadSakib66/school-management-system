@@ -57,7 +57,7 @@ class ParentController extends Controller
         if ($request->filled('name')) {
             $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', '%'.$request->name.'%')
-                  ->orWhere('last_name', 'like', '%'.$request->name.'%');
+                ->orWhere('last_name', 'like', '%'.$request->name.'%');
             });
         }
         if ($request->filled('email')) {
@@ -76,11 +76,28 @@ class ParentController extends Controller
             $query->where('status', (int) $request->status);
         }
 
-        $data['getRecord'] = $query->paginate(20)->appends($request->all());
-        $data['header_title'] = 'Parent List';
+        $parents = $query->paginate(20)->appends($request->all());
 
-        return view('admin.parent.list', $data);
+        // ⚡ Pull assigned student IDs for these parents (via pivot)
+        $assignedByParent = collect();
+        if ($parents->count()) {
+            $rows = DB::table('student_guardians')
+                ->select('parent_id', 'student_id')
+                ->where('school_id', $schoolId)
+                ->whereIn('parent_id', $parents->pluck('id'))
+                ->get();
+
+            $assignedByParent = $rows->groupBy('parent_id')
+                                    ->map(fn($g) => $g->pluck('student_id')->all());
+        }
+
+        return view('admin.parent.list', [
+            'getRecord'        => $parents,
+            'assignedByParent' => $assignedByParent, // <-- pass to blade
+            'header_title'     => 'Parent List',
+        ]);
     }
+
 
     public function download($id)
     {
