@@ -6,11 +6,11 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
-use App\Models\ClassModel;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class ParentController extends Controller
 {
@@ -42,112 +42,115 @@ class ParentController extends Controller
     /* --------------------------------
      * ADMIN: Parents CRUD
      * -------------------------------- */
-public function list(Request $request)
-{
-    if ($resp = $this->guardSchoolContext()) return $resp;
+    public function list(Request $request)
+    {
+        if ($resp = $this->guardSchoolContext()) return $resp;
 
-    $schoolId = $this->currentSchoolId();
+        $schoolId = $this->currentSchoolId();
 
-    $query = User::query()
-        ->where('role', 'parent')
-        ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-        ->orderBy('name')->orderBy('last_name');
+        $query = User::query()
+            ->where('role', 'parent')
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->orderBy('name')->orderBy('last_name');
 
-    // 🔎 Filters
-    if ($request->filled('name')) {
-        $query->where(function ($q) use ($request) {
-            $q->where('name', 'like', '%'.$request->name.'%')
-              ->orWhere('last_name', 'like', '%'.$request->name.'%');
-        });
-    }
-    if ($request->filled('email')) {
-        $query->where('email', 'like', '%'.$request->email.'%');
-    }
-    if ($request->filled('mobile')) {
-        $query->where('mobile_number', 'like', '%'.$request->mobile.'%');
-    }
-    if ($request->filled('gender')) {
-        $query->where('gender', $request->gender);
-    }
-    if ($request->filled('occupation')) {
-        $query->where('occupation', 'like', '%'.$request->occupation.'%');
-    }
-    if ($request->filled('status') && $request->status !== '') {
-        $query->where('status', (int) $request->status);
-    }
-
-    $data['getRecord'] = $query->paginate(20)->appends($request->all());
-    $data['header_title'] = 'Parent List';
-
-    return view('admin.parent.list', $data);
-}
-
-
-public function download($id)
-{
-    if ($resp = $this->guardSchoolContext()) return $resp;
-
-    $schoolId = $this->currentSchoolId();
-
-    $parent = User::query()
-        ->where('role','parent')
-        ->when($schoolId, fn($q)=>$q->where('school_id',$schoolId))
-        ->findOrFail($id);
-
-    // Children (students) of this parent (with class)
-    $children = User::query()
-        ->where('role','student')
-        ->when($schoolId, fn($q)=>$q->where('school_id',$schoolId))
-        ->where('parent_id', $parent->id)
-        ->with('class')
-        ->orderBy('name')->orderBy('last_name')
-        ->get();
-
-    // Helper: try multiple folders on public disk and embed as base64
-    $embedFromPublic = function (?string $val, array $dirs) {
-        if (!$val) return null;
-        $normalized = ltrim(str_replace(['public/','storage/'], '', $val), '/');
-        $candidates = [$normalized];
-        $basename   = basename($normalized);
-        foreach ($dirs as $d) {
-            $candidates[] = trim($d, '/') . '/' . $basename;
+        // 🔎 Filters
+        if ($request->filled('name')) {
+            $query->where(function ($q) use ($request) {
+                $q->where('name', 'like', '%'.$request->name.'%')
+                  ->orWhere('last_name', 'like', '%'.$request->name.'%');
+            });
         }
-        $path = null;
-        foreach ($candidates as $cand) {
-            if (Storage::disk('public')->exists($cand)) { $path = $cand; break; }
+        if ($request->filled('email')) {
+            $query->where('email', 'like', '%'.$request->email.'%');
         }
-        if (!$path) return null;
-
-        $bin = Storage::disk('public')->get($path);
-        $mime = 'image/jpeg';
-        if (class_exists(\finfo::class)) {
-            $fi = new \finfo(FILEINFO_MIME_TYPE);
-            $det = $fi->buffer($bin);
-            if ($det) $mime = $det;
-        } else {
-            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-            $map = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp'];
-            if (isset($map[$ext])) $mime = $map[$ext];
+        if ($request->filled('mobile')) {
+            $query->where('mobile_number', 'like', '%'.$request->mobile.'%');
         }
-        return 'data:'.$mime.';base64,'.base64_encode($bin);
-    };
+        if ($request->filled('gender')) {
+            $query->where('gender', $request->gender);
+        }
+        if ($request->filled('occupation')) {
+            $query->where('occupation', 'like', '%'.$request->occupation.'%');
+        }
+        if ($request->filled('status') && $request->status !== '') {
+            $query->where('status', (int) $request->status);
+        }
 
-    // Parent photo: try public/storage/parent then public/storage/parent_photos
-    $parentPhoto = $embedFromPublic($parent->parent_photo, ['parent', 'parent_photos']);
+        $data['getRecord'] = $query->paginate(20)->appends($request->all());
+        $data['header_title'] = 'Parent List';
 
-    $data = [
-        'parent'      => $parent,
-        'children'    => $children,
-        'parentPhoto' => $parentPhoto,
-    ];
+        return view('admin.parent.list', $data);
+    }
 
-    $fileName = Str::slug(trim(($parent->name ?? '').' '.($parent->last_name ?? '')) ?: 'parent') . '.pdf';
+    public function download($id)
+    {
+        if ($resp = $this->guardSchoolContext()) return $resp;
 
-    $pdf = Pdf::loadView('pdf.parent_profile', $data)->setPaper('A4','portrait');
+        $schoolId = $this->currentSchoolId();
 
-    return $pdf->stream($fileName, ['Attachment' => false]);
-}
+        $parent = User::query()
+            ->where('role','parent')
+            ->when($schoolId, fn($q)=>$q->where('school_id',$schoolId))
+            ->findOrFail($id);
 
+        // Children (students) of this parent via pivot (student_guardians)
+        $children = User::query()
+            ->where('role', 'student')
+            ->where('school_id', $schoolId)
+            ->whereIn('id', function ($q) use ($schoolId, $parent) {
+                $q->from('student_guardians')
+                  ->select('student_id')
+                  ->where('school_id', $schoolId)
+                  ->where('parent_id', $parent->id);
+            })
+            ->with('class')
+            ->orderBy('name')->orderBy('last_name')
+            ->get();
+
+        // Helper: try multiple folders on public disk and embed as base64
+        $embedFromPublic = function (?string $val, array $dirs) {
+            if (!$val) return null;
+            $normalized = ltrim(str_replace(['public/','storage/'], '', $val), '/');
+            $candidates = [$normalized];
+            $basename   = basename($normalized);
+            foreach ($dirs as $d) {
+                $candidates[] = trim($d, '/') . '/' . $basename;
+            }
+            $path = null;
+            foreach ($candidates as $cand) {
+                if (Storage::disk('public')->exists($cand)) { $path = $cand; break; }
+            }
+            if (!$path) return null;
+
+            $bin = Storage::disk('public')->get($path);
+            $mime = 'image/jpeg';
+            if (class_exists(\finfo::class)) {
+                $fi = new \finfo(FILEINFO_MIME_TYPE);
+                $det = $fi->buffer($bin);
+                if ($det) $mime = $det;
+            } else {
+                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                $map = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp'];
+                if (isset($map[$ext])) $mime = $map[$ext];
+            }
+            return 'data:'.$mime.';base64,'.base64_encode($bin);
+        };
+
+        // Parent photo: try public/storage/parent then public/storage/parent_photos
+        $parentPhoto = $embedFromPublic($parent->parent_photo, ['parent', 'parent_photos']);
+
+        $data = [
+            'parent'      => $parent,
+            'children'    => $children,
+            'parentPhoto' => $parentPhoto,
+        ];
+
+        $fileName = Str::slug(trim(($parent->name ?? '').' '.($parent->last_name ?? '')) ?: 'parent') . '.pdf';
+
+        $pdf = Pdf::loadView('pdf.parent_profile', $data)->setPaper('A4','portrait');
+
+        return $pdf->stream($fileName, ['Attachment' => false]);
+    }
 
     public function add()
     {
@@ -174,7 +177,6 @@ public function download($id)
             ],
             'mobile_number'  => ['required','string','min:10','max:20'],
             'password'       => ['required','string','min:6'],
-            // Lock the role to parent; don’t trust input but keep for compatibility
             'role'           => ['required','in:parent'],
             'status'         => ['nullable','in:0,1'],
             'address'        => ['nullable','string','max:255'],
@@ -183,7 +185,7 @@ public function download($id)
         ]);
 
         $parent = new User();
-        $parent->school_id     = $schoolId; // scope to current school
+        $parent->school_id     = $schoolId;
         $parent->name          = trim($request->name);
         $parent->last_name     = trim((string) $request->last_name);
         $parent->gender        = $request->gender ?: null;
@@ -192,7 +194,7 @@ public function download($id)
         $parent->occupation    = trim((string) $request->occupation) ?: null;
         $parent->address       = trim((string) $request->address) ?: null;
         $parent->password      = Hash::make($request->password);
-        $parent->role          = 'parent'; // force
+        $parent->role          = 'parent';
         $parent->status        = (int) ($request->status ?? 1);
 
         if ($request->hasFile('parent_photo')) {
@@ -241,7 +243,7 @@ public function download($id)
             ],
             'mobile_number'  => ['required','string','min:10','max:20'],
             'password'       => ['nullable','string','min:6'],
-            'role'           => ['required','in:parent'], // keep API compatible
+            'role'           => ['required','in:parent'],
             'status'         => ['nullable','in:0,1'],
             'address'        => ['nullable','string','max:255'],
             'occupation'     => ['nullable','string','max:255'],
@@ -256,7 +258,7 @@ public function download($id)
         $parent->occupation    = trim((string) $request->occupation) ?: null;
         $parent->address       = trim((string) $request->address) ?: null;
         $parent->status        = (int) ($request->status ?? 1);
-        $parent->role          = 'parent'; // force
+        $parent->role          = 'parent';
 
         if (!empty($request->password)) {
             $parent->password = Hash::make($request->password);
@@ -289,10 +291,16 @@ public function download($id)
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->findOrFail((int) $request->id);
 
-        // Optional: keep file on soft-delete; but if you prefer cleanup, delete:
+        // Optional: delete file
         if ($parent->parent_photo && Storage::disk('public')->exists($parent->parent_photo)) {
             Storage::disk('public')->delete($parent->parent_photo);
         }
+
+        // Also clean pivot rows for this parent in this school
+        DB::table('student_guardians')
+            ->where('school_id', $schoolId)
+            ->where('parent_id', $parent->id)
+            ->delete();
 
         $parent->delete();
 
@@ -300,7 +308,7 @@ public function download($id)
     }
 
     /* --------------------------------
-     * ADMIN: Link/unlink children
+     * ADMIN: Link/unlink children via pivot
      * -------------------------------- */
     public function addMyStudent(Request $request, $id)
     {
@@ -312,13 +320,46 @@ public function download($id)
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->findOrFail($id);
 
-        // Search pool: only students in the same school
-        $data['parent_id']        = $parent->id;
-        $data['getRecord']        = User::getSearchStudents($request); // ensure this helper scopes by school; if not, add ->where('school_id',$schoolId)
-        $data['assignedStudents'] = $parent->children;                 // assumes hasMany children()
-        $data['header_title']     = 'Parent Student List';
+        // Search pool: only students in the same school, with filters
+        $students = User::query()
+            ->where('role', 'student')
+            ->where('school_id', $schoolId)
+            ->with('class')
+            ->when($request->filled('name'), function ($q) use ($request) {
+                $q->where(function ($qq) use ($request) {
+                    $qq->where('name', 'like', '%'.$request->name.'%')
+                       ->orWhere('last_name', 'like', '%'.$request->name.'%');
+                });
+            })
+            ->when($request->filled('email'), fn($q) => $q->where('email', 'like', '%'.$request->email.'%'))
+            ->when($request->filled('mobile'), fn($q) => $q->where('mobile_number', 'like', '%'.$request->mobile.'%'))
+            ->orderBy('name')->orderBy('last_name')
+            ->paginate(20)
+            ->appends($request->all());
 
-        return view('admin.parent.my_student', $data);
+        // Already assigned students (to this parent) via pivot
+        $assignedStudents = User::query()
+            ->where('role', 'student')
+            ->where('school_id', $schoolId)
+            ->whereIn('id', function ($q) use ($schoolId, $parent) {
+                $q->from('student_guardians')
+                  ->select('student_id')
+                  ->where('school_id', $schoolId)
+                  ->where('parent_id', $parent->id);
+            })
+            ->with('class')
+            ->orderBy('name')->orderBy('last_name')
+            ->get();
+
+        $assignedIds = $assignedStudents->pluck('id')->all();
+
+        return view('admin.parent.my_student', [
+            'parent_id'        => $parent->id,
+            'getRecord'        => $students,
+            'assignedStudents' => $assignedStudents,
+            'assignedIds'      => $assignedIds,
+            'header_title'     => 'Parent Student List',
+        ]);
     }
 
     public function assignStudent(Request $request)
@@ -326,8 +367,10 @@ public function download($id)
         if ($resp = $this->guardSchoolContext()) return $resp;
 
         $request->validate([
-            'parent_id'  => ['required','integer','exists:users,id'],
-            'student_id' => ['required','integer','exists:users,id'],
+            'parent_id'    => ['required','integer','exists:users,id'],
+            'student_id'   => ['required','integer','exists:users,id'],
+            'relationship' => ['nullable','string','max:20'], // e.g., mother, father, guardian
+            'is_primary'   => ['nullable','in:0,1'],
         ]);
 
         $schoolId = $this->currentSchoolId();
@@ -340,9 +383,35 @@ public function download($id)
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->findOrFail((int) $request->student_id);
 
-        // Simple FK model (users.parent_id). If you use pivot, adapt accordingly.
-        $student->parent_id = $parent->id;
-        $student->save();
+        // Prevent duplicates
+        $exists = DB::table('student_guardians')
+            ->where('school_id', $schoolId)
+            ->where('student_id', $student->id)
+            ->where('parent_id', $parent->id)
+            ->exists();
+
+        if (! $exists) {
+            DB::table('student_guardians')->insert([
+                'school_id'    => $schoolId,
+                'student_id'   => $student->id,
+                'parent_id'    => $parent->id,
+                'relationship' => $request->relationship ?: null,
+                'is_primary'   => (int) ($request->is_primary ?? 0),
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]);
+        } else {
+            // Optional: update relationship/is_primary if re-assigned
+            DB::table('student_guardians')
+                ->where('school_id', $schoolId)
+                ->where('student_id', $student->id)
+                ->where('parent_id', $parent->id)
+                ->update([
+                    'relationship' => $request->relationship ?: null,
+                    'is_primary'   => (int) ($request->is_primary ?? 0),
+                    'updated_at'   => now(),
+                ]);
+        }
 
         return back()->with('success', 'Student assigned successfully!');
     }
@@ -366,13 +435,13 @@ public function download($id)
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->findOrFail((int) $request->student_id);
 
-        // Only unlink if currently linked to this parent
-        if ((int) $student->parent_id === (int) $parent->id) {
-            $student->parent_id = null;
-            $student->save();
-        }
+        // Remove only this specific link
+        DB::table('student_guardians')
+            ->where('school_id', $schoolId)
+            ->where('student_id', $student->id)
+            ->where('parent_id', $parent->id)
+            ->delete();
 
         return back()->with('success', 'Student removed successfully!');
     }
 }
-

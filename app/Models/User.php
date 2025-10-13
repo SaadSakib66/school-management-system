@@ -234,4 +234,35 @@ public function scopeOfSchool($q, ?int $schoolId = null)
             'password'          => 'hashed',
         ];
     }
+
+
+    // A parent -> their students (wards)
+    public function wards()
+    {
+        return $this->belongsToMany(User::class, 'student_guardians', 'parent_id', 'student_id')
+            ->withPivot(['school_id','relationship','is_primary'])
+            ->withTimestamps()
+            ->where('users.role', 'student');
+    }
+
+    // A student -> their parents/guardians
+    public function parentsMany()
+    {
+        return $this->belongsToMany(User::class, 'student_guardians', 'student_id', 'parent_id')
+            ->withPivot(['school_id','relationship','is_primary'])
+            ->withTimestamps()
+            ->where('users.role', 'parent');
+    }
+
+
+
+
+
+
+
+
+
+
+
+
 }

@@ -85,6 +85,7 @@
                   <thead>
                     <tr>
                       <th>Serial</th>
+                      <th>Student ID</th>
                       <th>Photo</th>
                       <th>Name</th>
                       <th>Gender</th>
@@ -100,6 +101,7 @@
                     @forelse($getRecord as $value)
                       <tr>
                         <td>{{ ($getRecord->currentPage()-1)*$getRecord->perPage() + $loop->iteration }}</td>
+                        <td>{{ $value->id}}</td>
                         <td>
                           @if($value->student_photo)
                             @php

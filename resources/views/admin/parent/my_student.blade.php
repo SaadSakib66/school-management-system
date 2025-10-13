@@ -13,6 +13,8 @@
     <div class="app-content">
         <div class="container-fluid">
 
+            @include('admin.message')
+
             {{-- Search Form --}}
             <div class="row mb-3">
                 <div class="col-md-12">
@@ -64,7 +66,7 @@
                         <tbody>
                             @forelse($getRecord as $student)
                                 <tr>
-                                    <td>{{ $loop->iteration }}</td>
+                                    <td>{{ ($getRecord->currentPage() - 1) * $getRecord->perPage() + $loop->iteration }}</td>
                                     <td>
                                         @if($student->student_photo)
                                             <img src="{{ asset('storage/' . $student->student_photo) }}"
@@ -76,16 +78,25 @@
                                     <td>{{ $student->name }} {{ $student->last_name }}</td>
                                     <td>{{ $student->email }}</td>
                                     <td>{{ $student->mobile_number }}</td>
-                                    <td>{{ $student->class_name ?? 'N/A' }}</td>
+                                    <td>{{ $student->class->name ?? 'N/A' }}</td>
                                     <td>{{ $student->status == 1 ? 'Active' : 'Inactive' }}</td>
                                     <td>
-                                        @if($student->parent_id == $parent_id)
+                                        @if(in_array($student->id, $assignedIds))
                                             <button class="btn btn-success btn-sm" disabled>Assigned</button>
                                         @else
                                             <form action="{{ route('admin.parent.assign-student') }}" method="POST">
                                                 @csrf
                                                 <input type="hidden" name="student_id" value="{{ $student->id }}">
                                                 <input type="hidden" name="parent_id" value="{{ $parent_id }}">
+                                                {{-- Optional: relationship & primary selector
+                                                <select name="relationship" class="form-select form-select-sm d-inline-block w-auto me-1">
+                                                    <option value="">Relationship</option>
+                                                    <option value="mother">Mother</option>
+                                                    <option value="father">Father</option>
+                                                    <option value="guardian">Guardian</option>
+                                                </select>
+                                                <label class="ms-1 me-2"><input type="checkbox" name="is_primary" value="1"> Primary</label>
+                                                --}}
                                                 <button type="submit" class="btn btn-primary btn-sm">Assign</button>
                                             </form>
                                         @endif
@@ -138,10 +149,10 @@
                                     <td>{{ $student->email }}</td>
                                     <td>{{ $student->class->name ?? 'N/A' }}</td>
                                     <td>
-                                        <form action="{{ route('admin.parent.remove-student') }}" method="POST">
+                                        <form action="{{ route('admin.parent.remove-student') }}" method="POST" onsubmit="return confirm('Remove this student?');">
                                             @csrf
-                                            <input type="hidden" name="student_id" value="{{ $student->id }}">
                                             <input type="hidden" name="parent_id" value="{{ $parent_id }}">
+                                            <input type="hidden" name="student_id" value="{{ $student->id }}">
                                             <button type="submit" class="btn btn-danger btn-sm">Remove</button>
                                         </form>
                                     </td>
