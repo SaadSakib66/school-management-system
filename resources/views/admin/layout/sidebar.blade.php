@@ -53,9 +53,28 @@
     @endphp
 
     <!-- Brand -->
+    @php
+        // $brandSchool is already set earlier in your sidebar (from your snippet)
+        // Fallback logo
+        $defaultLogo = asset('admin-assets/images/AdminLTELogo.png');
+
+        // Resolve school logo (supports both absolute URLs and storage paths)
+        $schoolLogo = null;
+        if (!empty($brandSchool?->logo)) {
+            $schoolLogo = \Illuminate\Support\Str::startsWith($brandSchool->logo, ['http://','https://'])
+                ? $brandSchool->logo
+                : asset('storage/'.$brandSchool->logo);
+        }
+    @endphp
+
     <div class="sidebar-brand">
         <a href="{{ $dashboardRoute }}" class="brand-link">
-            <img src="{{ asset('admin-assets/images/AdminLTELogo.png') }}" alt="Logo" class="brand-image opacity-75 shadow"/>
+            <img
+                src="{{ $schoolLogo ?: $defaultLogo }}"
+                alt="{{ $brandSchool?->short_name ?? $brandSchool?->name ?? 'Logo' }}"
+                class="brand-image opacity-75 shadow"
+                onerror="this.onerror=null;this.src='{{ $defaultLogo }}';"
+            />
             <span class="brand-text fw-light">{{ $brandText }}</span>
         </a>
     </div>

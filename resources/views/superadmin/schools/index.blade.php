@@ -108,6 +108,7 @@
             <tr>
               <th>Name</th>
               <th>Short</th>
+              <th>EIIN Number</th>
               <th>Email</th>
               <th>Status</th>
               <th class="text-end" style="width:320px;">Actions</th>
@@ -123,6 +124,7 @@
                   @endif
                 </td>
                 <td class="text-muted">{{ $s->short_name ?: '—' }}</td>
+                <td class="text-muted">{{ $s->eiin_num ?: '—' }}</td>
                 <td>
                   @if($s->email)
                     <a class="text-decoration-none" href="mailto:{{ $s->email }}">{{ $s->email }}</a>

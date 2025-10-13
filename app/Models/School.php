@@ -17,6 +17,9 @@ class School extends Model
         'address',
         'logo',
         'status',
+        'website',
+        'eiin_num',
+        'category',
     ];
 
     public function users()

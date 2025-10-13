@@ -5,6 +5,8 @@ namespace App\Http\Controllers\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\School;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class SchoolsController extends Controller
 {
@@ -15,12 +17,13 @@ class SchoolsController extends Controller
 
         $query = School::query();
 
-        // Text search over name/short/email
+        // Text search over name/short/email/eiin
         if ($q !== '') {
             $query->where(function ($qq) use ($q) {
                 $qq->where('name', 'like', "%{$q}%")
-                ->orWhere('short_name', 'like', "%{$q}%")
-                ->orWhere('email', 'like', "%{$q}%");
+                   ->orWhere('short_name', 'like', "%{$q}%")
+                   ->orWhere('eiin_num', 'like', "%{$q}%")
+                   ->orWhere('email', 'like', "%{$q}%");
             });
         }
 
@@ -30,17 +33,16 @@ class SchoolsController extends Controller
         }
 
         $schools = $query->orderByDesc('created_at')
-                        ->paginate(15)
-                        ->withQueryString(); // keep q/status in pagination links
+                         ->paginate(15)
+                         ->withQueryString();
 
-        // (Optional) header stats
+        // header stats
         $total    = School::count();
         $active   = School::where('status', 1)->count();
         $inactive = School::where('status', 0)->count();
 
         return view('superadmin.schools.index', compact('schools','total','active','inactive'));
     }
-
 
     public function create()
     {
@@ -52,14 +54,25 @@ class SchoolsController extends Controller
         $data = $request->validate([
             'name'       => ['required','string','max:255'],
             'short_name' => ['nullable','string','max:50'],
-            'email'      => ['nullable','email'],
+            'eiin_num'   => ['nullable','string','max:50'],
+            'category'   => ['nullable','string','max:100'],
+            'email'      => ['nullable','email','max:255'],
             'phone'      => ['nullable','string','max:50'],
             'address'    => ['nullable','string','max:1000'],
+            'website'    => ['nullable','url','max:255'],
             'status'     => ['required','boolean'],
+            'logo'       => ['nullable','image','mimes:jpg,jpeg,png,webp','max:2048'],
         ]);
 
+        // handle logo upload
+        if ($request->hasFile('logo')) {
+            $data['logo'] = $request->file('logo')->store('logos', 'public'); // e.g. storage/app/public/logos/xxxx.png
+        }
+
         School::create($data);
-        return redirect()->route('superadmin.schools.index')->with('success', 'School created.');
+
+        return redirect()->route('superadmin.schools.index')
+            ->with('success', 'School created.');
     }
 
     public function edit(School $school)
@@ -72,14 +85,28 @@ class SchoolsController extends Controller
         $data = $request->validate([
             'name'       => ['required','string','max:255'],
             'short_name' => ['nullable','string','max:50'],
-            'email'      => ['nullable','email'],
+            'eiin_num'   => ['nullable','string','max:50'],
+            'category'   => ['nullable','string','max:100'],
+            'email'      => ['nullable','email','max:255'],
             'phone'      => ['nullable','string','max:50'],
             'address'    => ['nullable','string','max:1000'],
+            'website'    => ['nullable','url','max:255'],
             'status'     => ['required','boolean'],
+            'logo'       => ['nullable','image','mimes:jpg,jpeg,png,webp','max:2048'],
         ]);
 
+        // replace logo if new one uploaded
+        if ($request->hasFile('logo')) {
+            if ($school->logo && Storage::disk('public')->exists($school->logo)) {
+                Storage::disk('public')->delete($school->logo);
+            }
+            $data['logo'] = $request->file('logo')->store('logos', 'public');
+        }
+
         $school->update($data);
-        return redirect()->route('superadmin.schools.index')->with('success', 'School updated.');
+
+        return redirect()->route('superadmin.schools.index')
+            ->with('success', 'School updated.');
     }
 
     public function toggleStatus(School $school)
@@ -90,6 +117,11 @@ class SchoolsController extends Controller
 
     public function destroy(School $school)
     {
+        // delete logo file if exists
+        if ($school->logo && Storage::disk('public')->exists($school->logo)) {
+            Storage::disk('public')->delete($school->logo);
+        }
+
         $school->delete();
         return back()->with('success', 'School deleted.');
     }
