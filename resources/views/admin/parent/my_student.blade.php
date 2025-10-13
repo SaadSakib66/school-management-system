@@ -141,6 +141,7 @@
                                         <form action="{{ route('admin.parent.remove-student') }}" method="POST">
                                             @csrf
                                             <input type="hidden" name="student_id" value="{{ $student->id }}">
+                                            <input type="hidden" name="parent_id" value="{{ $parent_id }}">
                                             <button type="submit" class="btn btn-danger btn-sm">Remove</button>
                                         </form>
                                     </td>
