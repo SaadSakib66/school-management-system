@@ -1,0 +1,239 @@
+/* ===== Base typography (Poppins) ===== */
+html { scroll-behavior: smooth; }
+
+body{
+  font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+.text-ems{ color:#2b3b67; }
+.text-nav{ color:#2b3b67; }
+.text-nav:hover{ color:#203256; }
+.text-muted2 {color: #2B3B67;}
+.nowrap{ white-space: nowrap; }
+
+/* Add sticky-nav offset for anchor jumps */
+#features, #modules, #faq { scroll-margin-top: 84px; }
+
+/* ===== Hero section ===== */
+.hero{ padding:48px 0 56px; }
+
+/* Keep the artwork column from bleeding left */
+.art-col{ position: relative; overflow: hidden; }
+
+/* Right-side art: TWO layered backgrounds
+   1) human (top)  2) blob (bottom, pushed further right)
+   Use root-relative URLs so they resolve from anywhere. */
+.hero-art{
+  height: clamp(420px, 60vh, 620px);
+  background-image: url("/front/images/hero_background_human.png"),
+                    url("/front/images/hero_background.png");
+  background-repeat: no-repeat, no-repeat;
+
+  /* Top illustration must always be fully visible */
+  background-size: contain, 140% auto;
+
+  /* human hugs right-bottom; blob is nudged further to the right */
+  background-position:
+    right bottom,
+    calc(100% + 160px) bottom;
+}
+
+/* Sub copy width + tone like sample */
+.hero-subcopy{
+  max-width: 440px;
+  font-size: 16px;
+}
+
+/* Gradient text for “School, Institute & Academy” */
+.highlight{
+  background: linear-gradient(90deg,#6aa8ff,#c76bff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+/* ===== Button (rounded, gradient, soft shadow) ===== */
+.btn-gradient{
+  color:#fff;
+  border:0;
+  border-radius:999px;
+  background: linear-gradient(180deg,#6fb1ff,#7dd3a7);
+  box-shadow: 0 10px 20px rgba(109,164,255,.25), inset 0 3px 8px rgba(255,255,255,.35);
+}
+.btn-gradient:hover{ color:#fff; opacity:.95; }
+
+/* ===== Responsive tweaks ===== */
+@media (max-width: 991.98px){
+  .hero{ padding:36px 0 40px; }
+  .art-col{ overflow: visible; }
+  .hero-art{
+    height: clamp(360px, 52vh, 560px);
+    background-size: contain, 180% auto;
+    background-position: center bottom, center bottom;
+  }
+}
+
+/* Extra wide screens */
+@media (min-width: 1400px){
+  .hero-art{
+    background-size: contain, 130% auto;
+    background-position: right 2% bottom, calc(100% + 220px) bottom;
+  }
+}
+
+/* ===== MODULES SECTION BACKGROUND ===== */
+.modules-section{
+  background: linear-gradient(to bottom, #ffffff 0 44%, #efe5ff 44% 100%);
+  position: relative;
+}
+.modules-section::before{
+  content:"";
+  position:absolute; left:-40%; bottom:-55%;
+  width:1400px; height:1400px; border-radius:50%;
+  background:#e9d6ff;
+  z-index:0;
+}
+
+/* Dashboard image polish */
+.dash-shot{
+  max-width: 980px;
+  border: 1px solid rgba(0,0,0,.06);
+}
+
+/* Module card + hover zoom */
+.module-card{
+  min-height: 260px;
+  height: 100%;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+
+  background: #fff;
+  border: 2px solid rgba(42,60,130,0.15);
+  border-radius: 18px;
+  box-shadow: 0 6px 14px rgba(23,27,55,.06);
+
+  transition:
+    transform .16s ease,
+    box-shadow .2s ease,
+    border-color .2s ease,
+    background-color .2s ease;
+}
+.module-card h5{ margin-bottom: .25rem; font-weight: 700; }
+.module-card p{ margin: 0; color: #6b7392; line-height: 1.55; }
+
+.module-card:hover,
+.module-card:focus-within{
+  transform: translateY(-10px);
+  border-color: #6a8bff;
+  box-shadow: 0 14px 28px rgba(86, 104, 237, 0.889);
+  background-color: #fbfbff;
+}
+
+@media (max-width: 991.98px){
+  .dash-shot{ max-width: 100%; }
+  .module-card{
+    min-height: 220px;
+    padding: 22px;
+  }
+}
+
+/* Animated underline */
+.underline-anim{
+  position: relative;
+  display: inline-block;
+  text-decoration: none;
+}
+.underline-anim::after{
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg,#6aa8ff,#c76bff);
+  border-radius: 3px;
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  transition: transform .35s ease;
+}
+.underline-anim:hover::after,
+.underline-anim:focus-visible::after{
+  transform: translateX(-50%) scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce){
+  .underline-anim::after{ transition: none; }
+}
+
+/* Navbar underline animation */
+.navbar .nav-link{
+  position: relative;
+  display: inline-block;
+  text-decoration: none;
+}
+.navbar .nav-link::after{
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg,#6aa8ff,#c76bff);
+  border-radius: 3px;
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  transition: transform .35s ease;
+}
+.navbar .nav-link:hover::after,
+.navbar .nav-link:focus-visible::after,
+.navbar .nav-link.active::after{
+  transform: translateX(-50%) scaleX(1);
+}
+@media (prefers-reduced-motion: reduce){
+  .navbar .nav-link::after{ transition: none; }
+}
+
+/* tighter heading line-height */
+.lh-tight { line-height: 1.50; }
+
+/* bring the animated underline closer */
+.u-close::after{
+  bottom: -10px;
+  height: 3px;
+  border-radius: 4px;
+}
+
+/* Banner with background.png */
+.brand-banner{
+  background: url("/front/images/background.png") center/cover no-repeat;
+  position: relative;
+}
+.brand-banner::before{
+  content:"";
+  position:absolute; inset:0;
+  background: radial-gradient(1200px 500px at 50% 55%, rgba(255,255,255,.35), rgba(255,255,255,.15) 45%, rgba(255,255,255,0) 70%),
+              linear-gradient(to bottom, rgba(255,255,255,.15), rgba(255,255,255,.15));
+  pointer-events:none;
+}
+.brand-banner__logo{
+  width: clamp(110px, 16vw, 160px);
+  height: auto;
+  filter: drop-shadow(0 6px 16px rgba(0,0,0,.08));
+}
+.brand-banner__title{
+  color: #000d7a;
+  font-weight: 700;
+  line-height: 1.25;
+  font-size: clamp(22px, 3vw, 34px);
+}
+
+/* spacing utilities for the banner only */
+.py-lg-6{ padding-top: 4.5rem !important; padding-bottom: 4.5rem !important; }
+@media (max-width: 991.98px){
+  .py-lg-6{ padding-top: 3rem !important; padding-bottom: 3rem !important; }
+}

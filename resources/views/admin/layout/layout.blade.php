@@ -3,18 +3,18 @@
     <!--begin::Head-->
     <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-        <title>School - {{ !empty($header_title) ? $header_title : ''}}</title>
+        <title>Education - {{ !empty($header_title) ? $header_title : ''}}</title>
         <!--begin::Primary Meta Tags-->
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="title" content="AdminLTE v4 | Dashboard" />
         <meta name="author" content="ColorlibHQ" />
         <meta
             name="description"
-            content="School Management System is a comprehensive platform for managing school operations, including student enrollment, attendance tracking, and academic performance monitoring."
+            content="Education Management System is a comprehensive platform for managing school operations, including student enrollment, attendance tracking, and academic performance monitoring."
             />
         <meta
             name="keywords"
-            content="school management, student enrollment, attendance tracking, academic performance, education software"
+            content="Education management, student enrollment, attendance tracking, academic performance, education software"
             />
         <!--end::Primary Meta Tags-->
         <!--begin::Fonts-->
