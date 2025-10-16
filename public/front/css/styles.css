@@ -20,12 +20,11 @@ body{
 .art-col{ position: relative; overflow: hidden; }
 
 /* Right-side art: TWO layered backgrounds
-   1) human (top)  2) blob (bottom, pushed further right)
-   Use root-relative URLs so they resolve from anywhere. */
+   1) human (top)  2) blob (bottom, pushed further right) */
 .hero-art{
   height: clamp(420px, 60vh, 620px);
-  background-image: url("/front/images/hero_background_human.png"),
-                    url("/front/images/hero_background.png");
+  background-image: url("../images/hero_background_human.png"),
+                    url("../images/hero_background.png");
   background-repeat: no-repeat, no-repeat;
 
   /* Top illustration must always be fully visible */
@@ -210,7 +209,7 @@ body{
 
 /* Banner with background.png */
 .brand-banner{
-  background: url("/front/images/background.png") center/cover no-repeat;
+  background: url("../images/background.png") center/cover no-repeat;
   position: relative;
 }
 .brand-banner::before{
@@ -237,3 +236,149 @@ body{
 @media (max-width: 991.98px){
   .py-lg-6{ padding-top: 3rem !important; padding-bottom: 3rem !important; }
 }
+
+
+/* Login Page Specific */
+
+.login-wrap{
+  min-height:100vh;
+  background:
+    url("../images/login_background.png") center/cover no-repeat fixed,
+    linear-gradient(135deg,#eef3ff 0%, #f6ecff 100%);
+  position:relative;
+  display:grid;
+  place-items:center;
+  padding:32px 16px;
+}
+
+.login-wrap::before{
+  content:"";
+  position:absolute; inset:0;
+  background:rgba(255,255,255,.35);
+  backdrop-filter:blur(2px);
+}
+
+/* Card */
+.login-card{
+  position:relative; z-index:1; width:min(980px,100%);
+  background:rgba(255,255,255,.85);
+  border:1px solid rgba(0,0,0,.06);
+  border-radius:20px;
+  box-shadow:0 16px 40px rgba(23,27,55,.15);
+  overflow:hidden;
+}
+
+/* Left panel */
+.login-left{
+  background:linear-gradient(135deg,#eef3ff 0%, #f6ecff 100%);
+  display:grid; place-items:center;
+  padding:28px; text-align:center;
+}
+
+/* BRAND — centered at the top */
+.login-left .brand{
+  position:absolute; top:18px; left:50%;
+  transform:translateX(-50%);
+  display:flex; align-items:center; justify-content:center;
+  gap:10px; width:max-content; text-align:center;
+}
+.login-left .brand img{ height:42px; width:auto; }
+.login-left .brand span{ font-weight:700; color:#2b3b67; }
+
+/* Right panel (form) */
+.login-form{ padding:34px; }
+.login-title{ color:#2b3b67; font-weight:700; margin-bottom:10px; }
+.muted{ color:#778; font-size:.92rem; }
+
+/* Inputs */
+.form-control{
+  border-radius:12px; padding:.9rem .95rem;
+  border:1.5px solid rgba(0,0,0,.12);
+}
+.form-control:focus{
+  border-color:#6a8bff;
+  box-shadow:0 0 0 .2rem rgba(106,139,255,.15);
+}
+
+/* Put eye button INSIDE the input */
+.position-relative > .form-control{
+  padding-right: 2.8rem; /* room for eye button */
+}
+.toggle-eye{
+  position:absolute;
+  top:50%; right:12px; transform:translateY(-50%);
+  width:34px; height:34px;
+  display:grid; place-items:center;
+  border:0; background:transparent; color:#6b7392;
+  border-radius:8px; cursor:pointer;
+}
+.toggle-eye:hover{ color:#38405f; }
+.toggle-eye:focus-visible{
+  outline:none; box-shadow:0 0 0 3px rgba(106,139,255,.25);
+}
+/* icon swap */
+.icon-eye-off{ display:none; }
+.toggle-eye.active .icon-eye{ display:none; }
+.toggle-eye.active .icon-eye-off{ display:block; }
+
+/* Buttons */
+.btn-gradient{
+  color:#fff; border:0; border-radius:999px;
+  background:linear-gradient(180deg,#6fb1ff,#7dd3a7);
+  box-shadow:0 10px 20px rgba(109,164,255,.25), inset 0 3px 8px rgba(255,255,255,.35);
+}
+.btn-gradient:hover{ color:#fff; opacity:.95; }
+
+/* Left-side demo button (gradient) */
+.btn-ghost{
+  display:inline-block; border:0; border-radius:999px;
+  padding:.65rem 1.15rem; font-weight:700; color:#fff; text-decoration:none;
+  background:linear-gradient(90deg,#6aa8ff,#c76bff);
+  box-shadow:0 10px 20px rgba(109,164,255,.25), inset 0 3px 8px rgba(255,255,255,.25);
+  transition:transform .15s ease, opacity .2s ease, box-shadow .2s ease;
+}
+.btn-ghost:hover{
+  transform:translateY(-1px); opacity:.97;
+  box-shadow:0 14px 26px rgba(109,164,255,.35), inset 0 3px 8px rgba(255,255,255,.3);
+}
+
+/* Responsive */
+@media (max-width: 991.98px){
+  .login-left{ display:none; }
+  .login-form{ padding:28px; }
+}
+
+
+/* Bottom-center Home button */
+/* Bottom-center Home button (raised) */
+.btn-home{
+  position: absolute;          /* anchor inside .login-wrap (which is position:relative) */
+  left: 50%;
+  bottom: clamp(120px, 12vh, 180px); /* raise it from the bottom */
+  transform: translateX(-50%);
+  z-index: 5;                  /* above .login-wrap::before overlay and background */
+  padding: .65rem 1.15rem;
+  border-radius: 999px;
+  font-weight: 700;
+  text-decoration: none;
+  color: #fff;
+  background: linear-gradient(90deg,#6aa8ff,#c76bff);
+  box-shadow: 0 10px 20px rgba(109,164,255,.25), inset 0 3px 8px rgba(255,255,255,.25);
+  transition: transform .15s ease, opacity .2s ease, box-shadow .2s ease;
+}
+
+.btn-home:hover{
+  opacity: .97;
+  transform: translateX(-50%) translateY(-1px);
+  color: #fff;
+  box-shadow: 0 14px 26px rgba(109,164,255,.35), inset 0 3px 8px rgba(255,255,255,.3);
+}
+
+/* Tweak position on narrow screens */
+@media (max-width: 767.98px){
+  .btn-home{
+    bottom: clamp(60px, 10vh, 100px);
+    padding: .55rem 1rem;
+  }
+}
+
