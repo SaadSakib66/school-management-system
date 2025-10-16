@@ -49,6 +49,7 @@ class DashboardController extends Controller
             }
 
             case 'admin': {
+                $header_title = 'Admin Dashboard';
                 $schoolId = session('current_school_id') ?: ($user->school_id ?? null);
                 abort_if(!$schoolId, 403, 'No school context for admin.');
                 $school = School::findOrFail($schoolId);
@@ -60,10 +61,11 @@ class DashboardController extends Controller
                                     ->orderByDesc('last_login_at')
                                     ->get();
 
-                return view('admin.dashboard', compact('stats', 'school', 'recentUsers', 'extras'));
+                return view('admin.dashboard', compact('header_title','stats', 'school', 'recentUsers', 'extras'));
             }
 
             case 'teacher': {
+                $header_title = 'Teacher Dashboard';
                 $schoolId = $user->school_id;
                 abort_if(!$schoolId, 403, 'No school assigned.');
                 $school = School::findOrFail($schoolId);
@@ -74,10 +76,11 @@ class DashboardController extends Controller
                     ->whereIn('role', ['student','parent'])
                     ->latest()->take(8)->get();
 
-                return view('teacher.dashboard', compact('stats', 'school', 'recentUsers', 'extras'));
+                return view('teacher.dashboard', compact('header_title','stats', 'school', 'recentUsers', 'extras'));
             }
 
             case 'student': {
+                $header_title = 'Student Dashboard';
                 // Slim student dashboard
                 $schoolId = $user->school_id;
                 abort_if(!$schoolId, 403, 'No school assigned.');
@@ -86,12 +89,14 @@ class DashboardController extends Controller
                 $overview = $this->studentOverview($school->id, $user);
 
                 return view('student.dashboard', [
+                    'header_title' => $header_title,
                     'school'   => $school,
                     'overview' => $overview,
                 ]);
             }
 
             case 'parent': {
+                $header_title = 'Parent Dashboard';
                 // Reworked parent dashboard only (others unchanged)
                 $schoolId = $user->school_id;
                 abort_if(!$schoolId, 403, 'No school assigned.');
@@ -104,6 +109,7 @@ class DashboardController extends Controller
                 ];
 
                 return view('parent.dashboard', [
+                    'header_title' => $header_title,
                     'school'   => $school,
                     'overview' => $overview,
                     'stats'    => $stats,

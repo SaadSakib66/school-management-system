@@ -14,7 +14,7 @@
   <!-- Page styles -->
   <link rel="stylesheet" href="{{ asset('front/css/styles.css') }}" />
 
-  <!-- Minimal inline helpers (no .login-wrap background here) -->
+  <!-- Minimal inline helpers -->
   <style>
     .toggle-eye{position:absolute;right:.75rem;top:50%;transform:translateY(-50%);border:0;background:transparent;padding:0;line-height:1;cursor:pointer}
     .login-card{width:min(1100px,96%);box-shadow:0 10px 30px rgba(0,0,0,.06);border-radius:18px;overflow:hidden;background:#fff}
@@ -25,11 +25,13 @@
     .login-form{padding:40px 34px}
     .login-title{font-weight:700}
     .muted{color:#6c757d}
+    /* optional: soften modal corners */
+    .modal-content{border-radius:18px}
   </style>
 </head>
 <body>
 
-  <main class="login-wrap">
+  <main class="login-wrap d-flex justify-content-center py-5">
     <div class="login-card row g-0 align-items-stretch">
 
       <!-- Left: animation + brand + DEMO button -->
@@ -48,8 +50,10 @@
           loop autoplay>
         </lottie-player>
 
-        <!-- Demo button (wire later if needed) -->
-        <a href="#" class="btn-ghost mt-3">Try Demo</a>
+        <!-- Demo button -> opens modal -->
+        <button type="button" class="btn-ghost mt-3" data-bs-toggle="modal" data-bs-target="#demoModal">
+          Try Demo
+        </button>
       </div>
 
       <!-- Right: form -->
@@ -115,15 +119,42 @@
       </div>
     </div>
 
-    
+    <!-- Floating Home button (kept as you had) -->
     <a href="{{ route('landing') }}" class="btn-home" aria-label="Go to homepage">Home</a>
-
   </main>
+
+  <!-- Demo Video Modal -->
+  <div class="modal fade" id="demoModal" tabindex="-1" aria-labelledby="demoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+      <div class="modal-content border-0">
+        <div class="modal-header">
+          <h5 class="modal-title" id="demoModalLabel">Quick Product Demo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0">
+          <!-- Responsive 16:9 player -->
+          <div class="ratio ratio-16x9">
+            <iframe
+              id="demoVimeo"
+              src="https://player.vimeo.com/video/1127772227?badge=0&autopause=0&player_id=demoVimeo&app_id=58479"
+              frameborder="0"
+              allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
+              referrerpolicy="strict-origin-when-cross-origin"
+              title="Baral"
+              allowfullscreen
+            ></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Lottie player -->
   <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
   <!-- Bootstrap bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Vimeo Player API -->
+  <script src="https://player.vimeo.com/api/player.js"></script>
 
   <script>
     // Year
@@ -140,6 +171,23 @@
         pwd.type = isHidden ? 'text' : 'password';
         icon.classList.toggle('bi-eye-fill', !isHidden);
         icon.classList.toggle('bi-eye-slash-fill', isHidden);
+      });
+    })();
+
+    // Vimeo: play on open, pause on close
+    (function(){
+      const iframe = document.getElementById('demoVimeo');
+      const modal  = document.getElementById('demoModal');
+      if (!iframe || !modal || !window.Vimeo) return;
+
+      const player = new Vimeo.Player(iframe);
+
+      modal.addEventListener('shown.bs.modal', () => {
+        player.play().catch(() => {/* autoplay might be blocked on some devices */});
+      });
+
+      modal.addEventListener('hide.bs.modal', () => {
+        player.pause().catch(() => {});
       });
     })();
   </script>
