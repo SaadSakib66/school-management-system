@@ -155,15 +155,15 @@
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Name</label>
-                    <input type="text" name="mother[name]" class="form-control" value="{{ old('mother.name') }}" placeholder="Mother's name">
+                    <input type="text" name="mother[name]" class="form-control" value="{{ old('mother.name', $mother->name ?? '') }}" placeholder="Mother's name">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Email</label>
-                    <input type="email" name="mother[email]" class="form-control" value="{{ old('mother.email') }}" placeholder="mother@example.com">
+                    <input type="email" name="mother[email]" class="form-control" value="{{ old('mother.email', $mother->email ?? '') }}" placeholder="mother@example.com">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Mobile</label>
-                    <input type="text" name="mother[mobile]" class="form-control" value="{{ old('mother.mobile') }}">
+                    <input type="text" name="mother[mobile]" class="form-control" value="{{ old('mother.mobile', $mother->mobile_number ?? '') }}">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Password (optional)</label>
@@ -171,28 +171,44 @@
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Occupation</label>
-                    <input type="text" name="mother[occupation]" class="form-control" value="{{ old('mother.occupation') }}">
+                    <input type="text" name="mother[occupation]" class="form-control" value="{{ old('mother.occupation', $mother->occupation ?? '') }}">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Address</label>
-                    <input type="text" name="mother[address]" class="form-control" value="{{ old('mother.address') }}">
+                    <input type="text" name="mother[address]" class="form-control" value="{{ old('mother.address', $mother->address ?? '') }}">
                   </div>
+
+                  {{-- Mother photo & NID/BC --}}
+                  <div class="col-md-6">
+                    <label class="form-label">Parent Photo (Mother)</label>
+                    <input type="file" name="mother[parent_photo]" class="form-control">
+                    @if(!empty($mother?->parent_photo))
+                      <div class="mt-2">
+                        <img src="{{ asset('storage/'.$mother->parent_photo) }}" alt="Mother Photo" width="100" height="100" style="object-fit:cover; border:1px solid #ccc;">
+                      </div>
+                    @endif
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">NID / Birth Certificate No. (Mother)</label>
+                    <input type="text" name="mother[nid_or_birthcertificate_no]" class="form-control" value="{{ old('mother.nid_or_birthcertificate_no', $mother->nid_or_birthcertificate_no ?? '') }}" placeholder="e.g., 1990XXXXXXX">
+                  </div>
+
                   <div class="col-md-4">
                     <label class="form-label">Gender</label>
                     <select name="mother[gender]" class="form-select">
                       <option value="">—</option>
-                      <option value="female" {{ old('mother.gender')==='female'?'selected':'' }}>Female</option>
-                      <option value="male"   {{ old('mother.gender')==='male'?'selected':'' }}>Male</option>
-                      <option value="other"  {{ old('mother.gender')==='other'?'selected':'' }}>Other</option>
+                      <option value="female" {{ old('mother.gender', $mother->gender ?? '')==='female'?'selected':'' }}>Female</option>
+                      <option value="male"   {{ old('mother.gender', $mother->gender ?? '')==='male'?'selected':'' }}>Male</option>
+                      <option value="other"  {{ old('mother.gender', $mother->gender ?? '')==='other'?'selected':'' }}>Other</option>
                     </select>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label">Relationship</label>
-                    <input type="text" name="mother[relationship]" class="form-control" value="{{ old('mother.relationship','mother') }}">
+                    <input type="text" name="mother[relationship]" class="form-control" value="{{ old('mother.relationship', $mother->relationship ?? 'mother') }}">
                   </div>
                   <div class="col-md-4 d-flex align-items-end">
                     <div class="form-check">
-                      <input class="form-check-input" type="checkbox" name="mother[is_primary]" value="1" id="mother_primary" {{ old('mother.is_primary') ? 'checked' : '' }}>
+                      <input class="form-check-input" type="checkbox" name="mother[is_primary]" value="1" id="mother_primary" {{ old('mother.is_primary', ($mother->is_primary ?? 0) ? '1' : null) ? 'checked' : '' }}>
                       <label for="mother_primary" class="form-check-label">Primary</label>
                     </div>
                   </div>
@@ -205,15 +221,15 @@
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Name</label>
-                    <input type="text" name="father[name]" class="form-control" value="{{ old('father.name') }}" placeholder="Father's name">
+                    <input type="text" name="father[name]" class="form-control" value="{{ old('father.name', $father->name ?? '') }}" placeholder="Father's name">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Email</label>
-                    <input type="email" name="father[email]" class="form-control" value="{{ old('father.email') }}" placeholder="father@example.com">
+                    <input type="email" name="father[email]" class="form-control" value="{{ old('father.email', $father->email ?? '') }}" placeholder="father@example.com">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Mobile</label>
-                    <input type="text" name="father[mobile]" class="form-control" value="{{ old('father.mobile') }}">
+                    <input type="text" name="father[mobile]" class="form-control" value="{{ old('father.mobile', $father->mobile_number ?? '') }}">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Password (optional)</label>
@@ -221,28 +237,44 @@
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Occupation</label>
-                    <input type="text" name="father[occupation]" class="form-control" value="{{ old('father.occupation') }}">
+                    <input type="text" name="father[occupation]" class="form-control" value="{{ old('father.occupation', $father->occupation ?? '') }}">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Address</label>
-                    <input type="text" name="father[address]" class="form-control" value="{{ old('father.address') }}">
+                    <input type="text" name="father[address]" class="form-control" value="{{ old('father.address', $father->address ?? '') }}">
                   </div>
+
+                  {{-- Father photo & NID/BC --}}
+                  <div class="col-md-6">
+                    <label class="form-label">Parent Photo (Father)</label>
+                    <input type="file" name="father[parent_photo]" class="form-control">
+                    @if(!empty($father?->parent_photo))
+                      <div class="mt-2">
+                        <img src="{{ asset('storage/'.$father->parent_photo) }}" alt="Father Photo" width="100" height="100" style="object-fit:cover; border:1px solid #ccc;">
+                      </div>
+                    @endif
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">NID / Birth Certificate No. (Father)</label>
+                    <input type="text" name="father[nid_or_birthcertificate_no]" class="form-control" value="{{ old('father.nid_or_birthcertificate_no', $father->nid_or_birthcertificate_no ?? '') }}" placeholder="e.g., 1990XXXXXXX">
+                  </div>
+
                   <div class="col-md-4">
                     <label class="form-label">Gender</label>
                     <select name="father[gender]" class="form-select">
                       <option value="">—</option>
-                      <option value="male"   {{ old('father.gender')==='male'?'selected':'' }}>Male</option>
-                      <option value="female" {{ old('father.gender')==='female'?'selected':'' }}>Female</option>
-                      <option value="other"  {{ old('father.gender')==='other'?'selected':'' }}>Other</option>
+                      <option value="male"   {{ old('father.gender', $father->gender ?? '')==='male'?'selected':'' }}>Male</option>
+                      <option value="female" {{ old('father.gender', $father->gender ?? '')==='female'?'selected':'' }}>Female</option>
+                      <option value="other"  {{ old('father.gender', $father->gender ?? '')==='other'?'selected':'' }}>Other</option>
                     </select>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label">Relationship</label>
-                    <input type="text" name="father[relationship]" class="form-control" value="{{ old('father.relationship','father') }}">
+                    <input type="text" name="father[relationship]" class="form-control" value="{{ old('father.relationship', $father->relationship ?? 'father') }}">
                   </div>
                   <div class="col-md-4 d-flex align-items-end">
                     <div class="form-check">
-                      <input class="form-check-input" type="checkbox" name="father[is_primary]" value="1" id="father_primary" {{ old('father.is_primary') ? 'checked' : '' }}>
+                      <input class="form-check-input" type="checkbox" name="father[is_primary]" value="1" id="father_primary" {{ old('father.is_primary', ($father->is_primary ?? 0) ? '1' : null) ? 'checked' : '' }}>
                       <label for="father_primary" class="form-check-label">Primary</label>
                     </div>
                   </div>

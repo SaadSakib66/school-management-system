@@ -47,6 +47,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'nid_or_birthcertificate_no',
     ];
 
     /* =========================

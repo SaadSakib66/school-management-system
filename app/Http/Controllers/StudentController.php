@@ -45,7 +45,9 @@ class StudentController extends Controller
 
     /**
      * Create or reuse a parent user in this school, by email.
-     * Returns the User model or null if no usable data provided.
+     * Accepts extra keys:
+     *   - nid_or_birthcertificate_no (string|null)
+     *   - parent_photo_file (UploadedFile|null)
      */
     protected function upsertParent(array $data, int $schoolId, ?string $defaultRelationship = null): ?User
     {
@@ -71,33 +73,51 @@ class StudentController extends Controller
         $address    = trim($data['address']    ?? '');
         $status     = isset($data['status']) ? (int)$data['status'] : 1;
         $password   = $data['password'] ?? null;
+        $nid        = trim((string)($data['nid_or_birthcertificate_no'] ?? ''));
+        $photoFile  = $data['parent_photo_file'] ?? null; // \Illuminate\Http\UploadedFile|null
 
         if (! $parent) {
             // Create a new parent
-            $parent           = new User();
-            $parent->school_id     = $schoolId;
-            $parent->role          = 'parent';
-            $parent->status        = $status;
-            $parent->email         = $email;
-            $parent->name          = $name !== '' ? $name : 'Parent';
-            $parent->last_name     = $last_name;
-            $parent->gender        = in_array($gender, ['male','female','other']) ? $gender : null;
-            $parent->mobile_number = $mobile;
-            $parent->occupation    = $occupation ?: null;
-            $parent->address       = $address ?: null;
-            $parent->password      = Hash::make(trim($password ?: Str::random(10)));
+            $parent                 = new User();
+            $parent->school_id      = $schoolId;
+            $parent->role           = 'parent';
+            $parent->status         = $status;
+            $parent->email          = $email;
+            $parent->name           = $name !== '' ? $name : 'Parent';
+            $parent->last_name      = $last_name ?: null;
+            $parent->gender         = in_array($gender, ['male','female','other']) ? $gender : null;
+            $parent->mobile_number  = $mobile ?: null;
+            $parent->occupation     = $occupation ?: null;
+            $parent->address        = $address ?: null;
+            $parent->nid_or_birthcertificate_no = $nid ?: null;
+            $parent->password       = Hash::make(trim($password ?: Str::random(10)));
+
+            if ($photoFile) {
+                $parent->parent_photo = $photoFile->store('parent', 'public');
+            }
             $parent->save();
         } else {
             // Optionally update some fields if provided
             $changed = false;
             if ($name      !== '' && $name      !== $parent->name)          { $parent->name = $name; $changed = true; }
-            if ($last_name !== '' && $last_name !== $parent->last_name)     { $parent->last_name = $last_name; $changed = true; }
+            if ($last_name !== '' && $last_name !== (string)$parent->last_name) { $parent->last_name = $last_name; $changed = true; }
             if ($gender && in_array($gender, ['male','female','other']) && $gender !== $parent->gender) { $parent->gender = $gender; $changed = true; }
-            if ($mobile    !== '' && $mobile    !== $parent->mobile_number) { $parent->mobile_number = $mobile; $changed = true; }
+            if ($mobile    !== '' && $mobile    !== (string)$parent->mobile_number) { $parent->mobile_number = $mobile; $changed = true; }
             if ($occupation!== '' && $occupation!== (string)$parent->occupation) { $parent->occupation = $occupation; $changed = true; }
             if ($address   !== '' && $address   !== (string)$parent->address)    { $parent->address = $address; $changed = true; }
             if (isset($data['status']) && (int)$data['status'] !== (int)$parent->status) { $parent->status = (int)$data['status']; $changed = true; }
             if ($password) { $parent->password = Hash::make(trim($password)); $changed = true; }
+            if ($nid !== '' && $nid !== (string)$parent->nid_or_birthcertificate_no) {
+                $parent->nid_or_birthcertificate_no = $nid;
+                $changed = true;
+            }
+            if ($photoFile) {
+                if ($parent->parent_photo && Storage::disk('public')->exists($parent->parent_photo)) {
+                    Storage::disk('public')->delete($parent->parent_photo);
+                }
+                $parent->parent_photo = $photoFile->store('parent','public');
+                $changed = true;
+            }
             if ($changed) $parent->save();
         }
 
@@ -188,67 +208,165 @@ class StudentController extends Controller
         return view('admin.student.list', $data);
     }
 
-    public function download($id)
-    {
-        if ($resp = $this->guardSchoolContext()) return $resp;
-        $schoolId = $this->currentSchoolId();
 
-        $student = User::query()
-            ->where('role','student')
+/**
+ * Pick one parent for a student (prefer primary; else mother; else father; else any).
+ * Returns a User model with extra props: relationship, is_primary.
+ */
+protected function resolvePrimaryParentViaPivot(int $schoolId, int $studentId): ?\App\Models\User
+{
+    $row = DB::table('student_guardians as sg')
+        ->join('users as u', function ($j) {
+            $j->on('u.id', '=', 'sg.parent_id')
+              ->where('u.role', 'parent');
+        })
+        ->where('sg.school_id', $schoolId)
+        ->where('sg.student_id', $studentId)
+        ->select('u.*', 'sg.relationship', 'sg.is_primary')
+        // primary first, then mother/father order, then newest
+        ->orderByDesc('sg.is_primary')
+        ->orderByRaw("FIELD(LOWER(COALESCE(sg.relationship,'')), 'mother','father')")  // MySQL
+        ->orderByDesc('u.id')
+        ->first();
+
+    if (! $row) return null;
+
+    $parent = new \App\Models\User();
+    foreach ((array)$row as $k => $v) { $parent->{$k} = $v; }
+    return $parent;
+}
+
+
+    // public function download($id)
+    // {
+    //     if ($resp = $this->guardSchoolContext()) return $resp;
+    //     $schoolId = $this->currentSchoolId();
+
+    //     $student = User::query()
+    //         ->where('role','student')
+    //         ->ofSchool($schoolId)
+    //         ->with('class')
+    //         ->findOrFail($id);
+
+    //     // Legacy single parent (kept for backward compatibility)
+    //     $parent = null;
+    //     if ($student->parent_id) {
+    //         $parent = User::query()
+    //             ->where('id', $student->parent_id)
+    //             ->where('role', 'parent')
+    //             ->ofSchool($schoolId)
+    //             ->first();
+    //     }
+
+    //     $embedFromPublic = function (?string $val, array $dirs) {
+    //         if (!$val) return null;
+    //         $normalized = ltrim(str_replace(['public/', 'storage/'], '', $val), '/');
+    //         $candidates = [$normalized];
+    //         $basename = basename($normalized);
+    //         foreach ($dirs as $d) { $candidates[] = trim($d, '/') . '/' . $basename; }
+    //         $path = null;
+    //         foreach ($candidates as $cand) {
+    //             if (Storage::disk('public')->exists($cand)) { $path = $cand; break; }
+    //         }
+    //         if (!$path) return null;
+
+    //         $bin = Storage::disk('public')->get($path);
+    //         $mime = 'image/jpeg';
+    //         if (class_exists(\finfo::class)) {
+    //             $fi = new \finfo(FILEINFO_MIME_TYPE);
+    //             $detected = $fi->buffer($bin);
+    //             if ($detected) $mime = $detected;
+    //         } else {
+    //             $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    //             $map = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp'];
+    //             if (isset($map[$ext])) $mime = $map[$ext];
+    //         }
+    //         return 'data:' . $mime . ';base64,' . base64_encode($bin);
+    //     };
+
+    //     $studentPhoto = $embedFromPublic($student->student_photo, ['student', 'student_photos']);
+    //     $parentPhoto  = $embedFromPublic($parent->parent_photo ?? null, ['parent', 'parent_photos']);
+
+    //     $data = [
+    //         'user'         => $student,
+    //         'parent'       => $parent,
+    //         'studentPhoto' => $studentPhoto,
+    //         'parentPhoto'  => $parentPhoto,
+    //     ];
+
+    //     $fileName = Str::slug(trim(($student->name ?? '') . ' ' . ($student->last_name ?? '')) ?: 'student') . '.pdf';
+    //     $pdf = Pdf::loadView('pdf.student_profile', $data)->setPaper('A4', 'portrait');
+    //     return $pdf->stream($fileName, ['Attachment' => false]);
+    // }
+
+public function download($id)
+{
+    if ($resp = $this->guardSchoolContext()) return $resp;
+    $schoolId = $this->currentSchoolId();
+
+    $student = User::query()
+        ->where('role','student')
+        ->ofSchool($schoolId)
+        ->with('class')
+        ->findOrFail($id);
+
+    // 1) Try legacy single parent_id
+    $parent = null;
+    if ($student->parent_id) {
+        $parent = User::query()
+            ->where('id', $student->parent_id)
+            ->where('role', 'parent')
             ->ofSchool($schoolId)
-            ->with('class')
-            ->findOrFail($id);
-
-        // Legacy single parent (kept for backward compatibility)
-        $parent = null;
-        if ($student->parent_id) {
-            $parent = User::query()
-                ->where('id', $student->parent_id)
-                ->where('role', 'parent')
-                ->ofSchool($schoolId)
-                ->first();
-        }
-
-        $embedFromPublic = function (?string $val, array $dirs) {
-            if (!$val) return null;
-            $normalized = ltrim(str_replace(['public/', 'storage/'], '', $val), '/');
-            $candidates = [$normalized];
-            $basename = basename($normalized);
-            foreach ($dirs as $d) { $candidates[] = trim($d, '/') . '/' . $basename; }
-            $path = null;
-            foreach ($candidates as $cand) {
-                if (Storage::disk('public')->exists($cand)) { $path = $cand; break; }
-            }
-            if (!$path) return null;
-
-            $bin = Storage::disk('public')->get($path);
-            $mime = 'image/jpeg';
-            if (class_exists(\finfo::class)) {
-                $fi = new \finfo(FILEINFO_MIME_TYPE);
-                $detected = $fi->buffer($bin);
-                if ($detected) $mime = $detected;
-            } else {
-                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-                $map = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp'];
-                if (isset($map[$ext])) $mime = $map[$ext];
-            }
-            return 'data:' . $mime . ';base64,' . base64_encode($bin);
-        };
-
-        $studentPhoto = $embedFromPublic($student->student_photo, ['student', 'student_photos']);
-        $parentPhoto  = $embedFromPublic($parent->parent_photo ?? null, ['parent', 'parent_photos']);
-
-        $data = [
-            'user'         => $student,
-            'parent'       => $parent,
-            'studentPhoto' => $studentPhoto,
-            'parentPhoto'  => $parentPhoto,
-        ];
-
-        $fileName = Str::slug(trim(($student->name ?? '') . ' ' . ($student->last_name ?? '')) ?: 'student') . '.pdf';
-        $pdf = Pdf::loadView('pdf.student_profile', $data)->setPaper('A4', 'portrait');
-        return $pdf->stream($fileName, ['Attachment' => false]);
+            ->first();
     }
+
+    // 2) Fallback: resolve via pivot (student_guardians)
+    if (! $parent) {
+        $parent = $this->resolvePrimaryParentViaPivot($schoolId, $student->id);
+    }
+
+    // helper to embed images from storage/public
+    $embedFromPublic = function (?string $val, array $dirs) {
+        if (!$val) return null;
+        $normalized = ltrim(str_replace(['public/','storage/'], '', $val), '/');
+        $candidates = [$normalized];
+        $basename   = basename($normalized);
+        foreach ($dirs as $d) { $candidates[] = trim($d, '/') . '/' . $basename; }
+        $path = null;
+        foreach ($candidates as $cand) {
+            if (Storage::disk('public')->exists($cand)) { $path = $cand; break; }
+        }
+        if (!$path) return null;
+
+        $bin  = Storage::disk('public')->get($path);
+        $mime = 'image/jpeg';
+        if (class_exists(\finfo::class)) {
+            $fi = new \finfo(FILEINFO_MIME_TYPE);
+            $detected = $fi->buffer($bin);
+            if ($detected) $mime = $detected;
+        } else {
+            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            $map = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp'];
+            if (isset($map[$ext])) $mime = $map[$ext];
+        }
+        return 'data:'.$mime.';base64,'.base64_encode($bin);
+    };
+
+    $studentPhoto = $embedFromPublic($student->student_photo, ['student', 'student_photos']);
+    $parentPhoto  = $embedFromPublic($parent->parent_photo ?? null, ['parent', 'parent_photos']);
+
+    $data = [
+        'user'         => $student,
+        'parent'       => $parent,       // may be null → your Blade already handles “N/A”
+        'studentPhoto' => $studentPhoto,
+        'parentPhoto'  => $parentPhoto,
+    ];
+
+    $fileName = Str::slug(trim(($student->name ?? '') . ' ' . ($student->last_name ?? '')) ?: 'student') . '.pdf';
+    $pdf = Pdf::loadView('pdf.student_profile', $data)->setPaper('A4', 'portrait');
+    return $pdf->stream($fileName, ['Attachment' => false]);
+}
+
 
     public function add()
     {
@@ -300,9 +418,13 @@ class StudentController extends Controller
             'height'          => ['nullable','string','max:50'],
             'weight'          => ['nullable','string','max:50'],
 
-            // Parent emails are optional but if provided must be valid
-            'mother.email'    => ['nullable','email'],
-            'father.email'    => ['nullable','email'],
+            // Parents
+            'mother.email'                     => ['nullable','email'],
+            'mother.parent_photo'              => ['nullable','file','mimes:jpg,jpeg,png','max:5120'],
+            'mother.nid_or_birthcertificate_no'=> ['nullable','string','max:32'],
+            'father.email'                     => ['nullable','email'],
+            'father.parent_photo'              => ['nullable','file','mimes:jpg,jpeg,png','max:5120'],
+            'father.nid_or_birthcertificate_no'=> ['nullable','string','max:32'],
         ]);
 
         // Create student
@@ -332,9 +454,10 @@ class StudentController extends Controller
         $student->save();
 
         // Handle Mother/Father (optional)
-        // mother[...], father[...]
         if ($request->has('mother')) {
-            $mother = $this->upsertParent($request->input('mother', []), $schoolId, 'mother');
+            $motherPayload = $request->input('mother', []);
+            $motherPayload['parent_photo_file'] = $request->file('mother.parent_photo'); // pass file
+            $mother = $this->upsertParent($motherPayload, $schoolId, 'mother');
             if ($mother) {
                 $this->attachGuardian(
                     $schoolId,
@@ -347,7 +470,9 @@ class StudentController extends Controller
         }
 
         if ($request->has('father')) {
-            $father = $this->upsertParent($request->input('father', []), $schoolId, 'father');
+            $fatherPayload = $request->input('father', []);
+            $fatherPayload['parent_photo_file'] = $request->file('father.parent_photo'); // pass file
+            $father = $this->upsertParent($fatherPayload, $schoolId, 'father');
             if ($father) {
                 $this->attachGuardian(
                     $schoolId,
@@ -360,6 +485,59 @@ class StudentController extends Controller
         }
 
         return redirect()->route('admin.student.list')->with('success', 'Student added successfully with parent linkage.');
+    }
+
+    protected function getStudentParents(int $schoolId, int $studentId): array
+    {
+        // Pull parents via pivot
+        $rows = DB::table('student_guardians as sg')
+            ->join('users as u', function($j){
+                $j->on('u.id','=','sg.parent_id')->where('u.role','parent');
+            })
+            ->where('sg.school_id', $schoolId)
+            ->where('sg.student_id', $studentId)
+            ->select('u.*', 'sg.relationship', 'sg.is_primary')
+            ->get();
+
+        $mother = null; $father = null;
+
+        foreach ($rows as $r) {
+            // Make an Eloquent-like object for easy property access in Blade
+            $u = new \App\Models\User();
+            // Fill user fields
+            foreach ((array) $r as $k => $v) { $u->{$k} = $v; }
+            // Normalize relationship
+            $rel = strtolower(trim((string)($r->relationship ?? '')));
+
+            if (!$mother && ($rel === 'mother' || strtolower((string)$r->gender) === 'female')) {
+                $mother = $u;
+            }
+            if (!$father && ($rel === 'father' || strtolower((string)$r->gender) === 'male')) {
+                $father = $u;
+            }
+        }
+
+        // Legacy fallback: if no pivot but student->parent_id exists
+        if (!$mother || !$father) {
+            $student = \App\Models\User::find($studentId);
+            if ($student && $student->parent_id) {
+                $p = \App\Models\User::query()
+                    ->where('id', $student->parent_id)
+                    ->where('role', 'parent')
+                    ->where('school_id', $schoolId)
+                    ->first();
+                if ($p) {
+                    $rel = strtolower((string)($p->relationship ?? ''));
+                    if (!$mother && ($rel === 'mother' || strtolower((string)$p->gender) === 'female')) {
+                        $mother = $p;
+                    } elseif (!$father && ($rel === 'father' || strtolower((string)$p->gender) === 'male')) {
+                        $father = $p;
+                    }
+                }
+            }
+        }
+
+        return ['mother' => $mother, 'father' => $father];
     }
 
     public function edit($id)
@@ -377,9 +555,15 @@ class StudentController extends Controller
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->orderBy('name')->get(['id','name']);
 
+        // NEW: prefill parents
+        $parents = $this->getStudentParents($schoolId, $data['user']->id);
+        $data['mother'] = $parents['mother'];
+        $data['father'] = $parents['father'];
+
         $data['header_title'] = 'Edit Student';
         return view('admin.student.add', $data);
     }
+
 
     public function update(Request $request, $id)
     {
@@ -419,8 +603,13 @@ class StudentController extends Controller
             'height'          => ['nullable','string','max:50'],
             'weight'          => ['nullable','string','max:50'],
 
-            'mother.email'    => ['nullable','email'],
-            'father.email'    => ['nullable','email'],
+            // Parents
+            'mother.email'                     => ['nullable','email'],
+            'mother.parent_photo'              => ['nullable','file','mimes:jpg,jpeg,png','max:5120'],
+            'mother.nid_or_birthcertificate_no'=> ['nullable','string','max:32'],
+            'father.email'                     => ['nullable','email'],
+            'father.parent_photo'              => ['nullable','file','mimes:jpg,jpeg,png','max:5120'],
+            'father.nid_or_birthcertificate_no'=> ['nullable','string','max:32'],
         ]);
 
         $student->name             = trim($request->name);
@@ -455,7 +644,9 @@ class StudentController extends Controller
 
         // Re/attach parents if provided
         if ($request->has('mother')) {
-            $mother = $this->upsertParent($request->input('mother', []), $schoolId, 'mother');
+            $motherPayload = $request->input('mother', []);
+            $motherPayload['parent_photo_file'] = $request->file('mother.parent_photo');
+            $mother = $this->upsertParent($motherPayload, $schoolId, 'mother');
             if ($mother) {
                 $this->attachGuardian(
                     $schoolId,
@@ -467,7 +658,9 @@ class StudentController extends Controller
             }
         }
         if ($request->has('father')) {
-            $father = $this->upsertParent($request->input('father', []), $schoolId, 'father');
+            $fatherPayload = $request->input('father', []);
+            $fatherPayload['parent_photo_file'] = $request->file('father.parent_photo');
+            $father = $this->upsertParent($fatherPayload, $schoolId, 'father');
             if ($father) {
                 $this->attachGuardian(
                     $schoolId,
