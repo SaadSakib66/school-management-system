@@ -54,59 +54,38 @@ class User extends Authenticatable
      |  Query Scopes
      |=========================*/
 
-    /** Filter by role(s). */
-    public function scopeRole($q, string|array $roles)
+    /** Filter by role(s). @param \Illuminate\Database\Eloquent\Builder $q */
+    public function scopeRole($q, $roles)
     {
         return $q->whereIn('role', (array) $roles);
     }
 
     /**
-     * Filter by *current* school context.
-     *
-     * - Super admin with session context → that school.
-     * - Non-super users → their own school_id.
-     * - If no school can be resolved → return EMPTY set (prevents leakage).
+     * Filter by current school context.
+     * Super admin without context => global (no filter).
      */
-    // public function scopeOfSchool($q, ?int $schoolId = null)
-    // {
-    //     $id = $schoolId ?? self::currentSchoolId();
+    public function scopeOfSchool($q, $schoolId = null)
+    {
+        // Super admin WITHOUT a selected school acts globally
+        if (self::isSuperAdmin() && ! session()->has('current_school_id')) {
+            return $q;
+        }
 
-    //     if (! $id) {
-    //         // No school context → deliberately return empty result set
-    //         return $q->whereRaw('1 = 0');
-    //     }
+        $id = $schoolId !== null ? (int) $schoolId : self::currentSchoolId();
 
-    //     return $q->where('school_id', $id);
-    // }
+        if (! $id) {
+            // No school resolved => return empty set
+            return $q->whereRaw('1 = 0');
+        }
 
-public function scopeOfSchool($q, ?int $schoolId = null)
-{
-    // Super admin without context = global view (no filter)
-    if (self::isSuperAdmin() && ! session()->has('current_school_id')) {
-        return $q;
+        $table = $q->getModel()->getTable(); // usually "users"
+        return $q->where($table . '.school_id', $id);
     }
-
-    // Prefer explicit id, else current context id, else user's school id
-    $id = $schoolId ?? self::currentSchoolId();
-
-    // If still no id, return empty result safely
-    if (! $id) {
-        return $q->whereRaw('1 = 0');
-    }
-
-    // QUALIFY the column to avoid ambiguity when joins are present
-    $table = $q->getModel()->getTable(); // "users"
-    return $q->where("{$table}.school_id", $id);
-}
-
 
     /**
-     * Resolve the current school id:
-     * - If super admin and session('current_school_id') is set → use it
-     * - Else use the authenticated user's school_id
-     * - Else null
+     * Resolve current school id from session/user.
      */
-    public static function currentSchoolId(): ?int
+    public static function currentSchoolId()
     {
         $user = Auth::user();
 
@@ -114,10 +93,10 @@ public function scopeOfSchool($q, ?int $schoolId = null)
             return (int) session('current_school_id');
         }
 
-        return $user?->school_id ? (int) $user->school_id : null;
+        return ($user && $user->school_id) ? (int) $user->school_id : null;
     }
 
-    public static function isSuperAdmin(): bool
+    public static function isSuperAdmin()
     {
         return Auth::check() && Auth::user()->role === 'super_admin';
     }
@@ -201,6 +180,8 @@ public function scopeOfSchool($q, ?int $schoolId = null)
         return $this->belongsTo(School::class, 'school_id');
     }
 
+    // NOTE: method name "class" works, but it's easy to confuse with ::class.
+    // If you ever rename it, update all eager-loads accordingly.
     public function class()
     {
         return $this->belongsTo(ClassModel::class, 'class_id');
@@ -213,7 +194,7 @@ public function scopeOfSchool($q, ?int $schoolId = null)
 
     public function children()
     {
-        // Children are students of the same parent; apply ofSchool() in callers as needed
+        // Children are students of the same parent; caller may chain ->ofSchool() if needed
         return $this->hasMany(User::class, 'parent_id')
             ->where('role', 'student')
             ->orderByDesc('id');
@@ -228,16 +209,13 @@ public function scopeOfSchool($q, ?int $schoolId = null)
         'remember_token',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'email_verified_at' => 'datetime',
-            'password'          => 'hashed',
-        ];
-    }
+    // Keep this form for older Laravel; if you're on Laravel 10+, you can also use protected function casts(): array {}
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        // DO NOT use 'password' => 'hashed' on older Laravel; your controllers already bcrypt.
+    ];
 
-
-    // A parent -> their students (wards)
+    // Many-to-many helpers (if you use student_guardians pivot)
     public function wards()
     {
         return $this->belongsToMany(User::class, 'student_guardians', 'parent_id', 'student_id')
@@ -246,7 +224,6 @@ public function scopeOfSchool($q, ?int $schoolId = null)
             ->where('users.role', 'student');
     }
 
-    // A student -> their parents/guardians
     public function parentsMany()
     {
         return $this->belongsToMany(User::class, 'student_guardians', 'student_id', 'parent_id')
@@ -254,16 +231,4 @@ public function scopeOfSchool($q, ?int $schoolId = null)
             ->withTimestamps()
             ->where('users.role', 'parent');
     }
-
-
-
-
-
-
-
-
-
-
-
-
 }
