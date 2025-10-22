@@ -118,6 +118,9 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::post('student/delete',              [StudentController::class, 'delete'])->name('admin.student.delete-student');
     // NEW: PDF (tab title friendly with optional slug)
     Route::get('students/download/{id}/{slug?}', [StudentController::class, 'download'])->name('admin.student.download');
+    // Generate next Admission/Roll codes (AJAX)
+    Route::get('student/next-codes', [StudentController::class, 'nextCodes'])->name('admin.student.next-codes');
+
 
     // Parents
     Route::get('parent/list',                  [ParentController::class, 'list'])->name('admin.parent.list');

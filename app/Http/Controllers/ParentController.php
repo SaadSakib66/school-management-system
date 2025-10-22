@@ -20,7 +20,7 @@ class ParentController extends Controller
     protected function currentSchoolId(): ?int
     {
         $u = Auth::user();
-        if (! $u) return null;
+        if (!$u) return null;
 
         if ($u->role === 'super_admin') {
             return (int) session('current_school_id');
@@ -31,7 +31,7 @@ class ParentController extends Controller
 
     protected function guardSchoolContext()
     {
-        if (Auth::user()?->role === 'super_admin' && ! $this->currentSchoolId()) {
+        if (Auth::user()?->role === 'super_admin' && !$this->currentSchoolId()) {
             return redirect()
                 ->route('superadmin.schools.switch')
                 ->with('error', 'Please select a school first.');
@@ -51,13 +51,15 @@ class ParentController extends Controller
         $query = User::query()
             ->where('role', 'parent')
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->orderBy('name')->orderBy('last_name');
+            // 📌 newest on top
+            ->orderByDesc('id');
 
         // 🔎 Filters
         if ($request->filled('name')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->name.'%')
-                ->orWhere('last_name', 'like', '%'.$request->name.'%');
+            $name = trim($request->name);
+            $query->where(function ($q) use ($name) {
+                $q->where('name', 'like', "%{$name}%")
+                  ->orWhere('last_name', 'like', "%{$name}%");
             });
         }
         if ($request->filled('email')) {
@@ -72,6 +74,10 @@ class ParentController extends Controller
         if ($request->filled('occupation')) {
             $query->where('occupation', 'like', '%'.$request->occupation.'%');
         }
+        // 🆕 filter by NID / Birth Certificate
+        if ($request->filled('nid_or_birthcertificate_no')) {
+            $query->where('nid_or_birthcertificate_no', 'like', '%'.$request->nid_or_birthcertificate_no.'%');
+        }
         if ($request->filled('status') && $request->status !== '') {
             $query->where('status', (int) $request->status);
         }
@@ -83,21 +89,95 @@ class ParentController extends Controller
         if ($parents->count()) {
             $rows = DB::table('student_guardians')
                 ->select('parent_id', 'student_id')
-                ->where('school_id', $schoolId)
+                ->when($schoolId !== null, fn($q) => $q->where('school_id', $schoolId))
                 ->whereIn('parent_id', $parents->pluck('id'))
                 ->get();
 
             $assignedByParent = $rows->groupBy('parent_id')
-                                    ->map(fn($g) => $g->pluck('student_id')->all());
+                                     ->map(fn($g) => $g->pluck('student_id')->all());
         }
 
         return view('admin.parent.list', [
             'getRecord'        => $parents,
-            'assignedByParent' => $assignedByParent, // <-- pass to blade
+            'assignedByParent' => $assignedByParent,
             'header_title'     => 'Parent List',
         ]);
     }
 
+    protected function schoolHeaderData(?int $forceSchoolId = null): array
+    {
+        // Resolve school id from several sources
+        $schoolId =
+            $forceSchoolId
+            ?? (method_exists($this, 'currentSchoolId') ? $this->currentSchoolId() : null)
+            ?? (Auth::check() ? Auth::user()->school_id : null)
+            ?? session('school_id'); // optional extra session key you may use
+
+        // As a last resort, pick the first school so the PDF doesn't explode
+        if (!$schoolId) {
+            $fallback = \App\Models\School::query()->orderBy('id')->value('id');
+            if ($fallback) {
+                $schoolId = (int)$fallback;
+            } else {
+                abort(403, 'No school context.');
+            }
+        }
+
+        /** @var \App\Models\School $school */
+        $school = \App\Models\School::findOrFail($schoolId);
+
+        // ---- Logo to data URI ----
+        $logoFile = $school->logo ?? $school->school_logo ?? $school->photo ?? null;
+        $logoSrc  = null;
+
+        if ($logoFile) {
+            $normalized = ltrim(str_replace(['public/', 'storage/'], '', $logoFile), '/');
+            $candidates = [$normalized, 'schools/'.basename($normalized), 'school_logos/'.basename($normalized)];
+            foreach ($candidates as $path) {
+                if (Storage::disk('public')->exists($path)) {
+                    $bin  = Storage::disk('public')->get($path);
+                    $mime = 'image/png';
+                    if (class_exists(\finfo::class)) {
+                        $fi  = new \finfo(FILEINFO_MIME_TYPE);
+                        $det = $fi->buffer($bin);
+                        if ($det) $mime = $det;
+                    } else {
+                        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                        $map = [
+                            'jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif',
+                            'webp'=>'image/webp','bmp'=>'image/bmp','svg'=>'image/svg+xml'
+                        ];
+                        if (isset($map[$ext])) $mime = $map[$ext];
+                    }
+                    $logoSrc = 'data:'.$mime.';base64,'.base64_encode($bin);
+                    break;
+                }
+            }
+        }
+
+        // ---- EIIN ----
+        $eiin = null;
+        foreach (['eiin_num', 'eiin', 'eiin_code', 'eiin_no'] as $field) {
+            if (isset($school->{$field})) {
+                $val = trim((string)$school->{$field});
+                if ($val !== '') { $eiin = $val; break; }
+            }
+        }
+
+        $website = $school->website ?? $school->website_url ?? $school->domain ?? null;
+        if (is_string($website)) $website = trim($website);
+
+        return [
+            'school'        => $school,
+            'schoolLogoSrc' => $logoSrc,
+            'schoolPrint'   => [
+                'name'    => $school->name ?? $school->short_name ?? 'Unknown School',
+                'eiin'    => $eiin,
+                'address' => $school->address ?? $school->full_address ?? null,
+                'website' => $website,
+            ],
+        ];
+    }
 
     public function download($id)
     {
@@ -117,7 +197,7 @@ class ParentController extends Controller
             ->whereIn('id', function ($q) use ($schoolId, $parent) {
                 $q->from('student_guardians')
                   ->select('student_id')
-                  ->where('school_id', $schoolId)
+                  ->when($schoolId !== null, fn($qq) => $qq->where('school_id', $schoolId))
                   ->where('parent_id', $parent->id);
             })
             ->with('class')
@@ -155,12 +235,13 @@ class ParentController extends Controller
 
         // Parent photo: try public/storage/parent then public/storage/parent_photos
         $parentPhoto = $embedFromPublic($parent->parent_photo, ['parent', 'parent_photos']);
+        $header = $this->schoolHeaderData();
 
         $data = [
             'parent'      => $parent,
             'children'    => $children,
             'parentPhoto' => $parentPhoto,
-        ];
+        ] + $header;
 
         $fileName = Str::slug(trim(($parent->name ?? '').' '.($parent->last_name ?? '')) ?: 'parent') . '.pdf';
 
@@ -199,6 +280,8 @@ class ParentController extends Controller
             'address'        => ['nullable','string','max:255'],
             'occupation'     => ['nullable','string','max:255'],
             'parent_photo'   => ['nullable','file','mimes:jpg,jpeg,png','max:5120'],
+            // 🆕
+            'nid_or_birthcertificate_no' => ['nullable','string','max:100'],
         ]);
 
         $parent = new User();
@@ -213,6 +296,8 @@ class ParentController extends Controller
         $parent->password      = Hash::make($request->password);
         $parent->role          = 'parent';
         $parent->status        = (int) ($request->status ?? 1);
+        // 🆕 save NID/BC no.
+        $parent->nid_or_birthcertificate_no = trim((string) $request->nid_or_birthcertificate_no) ?: null;
 
         if ($request->hasFile('parent_photo')) {
             $path = $request->file('parent_photo')->store('parent', 'public');
@@ -265,6 +350,8 @@ class ParentController extends Controller
             'address'        => ['nullable','string','max:255'],
             'occupation'     => ['nullable','string','max:255'],
             'parent_photo'   => ['nullable','file','mimes:jpg,jpeg,png','max:5120'],
+            // 🆕
+            'nid_or_birthcertificate_no' => ['nullable','string','max:100'],
         ]);
 
         $parent->name          = trim($request->name);
@@ -276,6 +363,8 @@ class ParentController extends Controller
         $parent->address       = trim((string) $request->address) ?: null;
         $parent->status        = (int) ($request->status ?? 1);
         $parent->role          = 'parent';
+        // 🆕 update NID/BC no.
+        $parent->nid_or_birthcertificate_no = trim((string) $request->nid_or_birthcertificate_no) ?: null;
 
         if (!empty($request->password)) {
             $parent->password = Hash::make($request->password);
@@ -315,7 +404,7 @@ class ParentController extends Controller
 
         // Also clean pivot rows for this parent in this school
         DB::table('student_guardians')
-            ->where('school_id', $schoolId)
+            ->when($schoolId !== null, fn($q) => $q->where('school_id', $schoolId))
             ->where('parent_id', $parent->id)
             ->delete();
 
@@ -343,9 +432,10 @@ class ParentController extends Controller
             ->where('school_id', $schoolId)
             ->with('class')
             ->when($request->filled('name'), function ($q) use ($request) {
-                $q->where(function ($qq) use ($request) {
-                    $qq->where('name', 'like', '%'.$request->name.'%')
-                       ->orWhere('last_name', 'like', '%'.$request->name.'%');
+                $name = trim($request->name);
+                $q->where(function ($qq) use ($name) {
+                    $qq->where('name', 'like', "%{$name}%")
+                       ->orWhere('last_name', 'like', "%{$name}%");
                 });
             })
             ->when($request->filled('email'), fn($q) => $q->where('email', 'like', '%'.$request->email.'%'))
@@ -361,7 +451,7 @@ class ParentController extends Controller
             ->whereIn('id', function ($q) use ($schoolId, $parent) {
                 $q->from('student_guardians')
                   ->select('student_id')
-                  ->where('school_id', $schoolId)
+                  ->when($schoolId !== null, fn($qq) => $qq->where('school_id', $schoolId))
                   ->where('parent_id', $parent->id);
             })
             ->with('class')
@@ -402,12 +492,12 @@ class ParentController extends Controller
 
         // Prevent duplicates
         $exists = DB::table('student_guardians')
-            ->where('school_id', $schoolId)
+            ->when($schoolId !== null, fn($q) => $q->where('school_id', $schoolId))
             ->where('student_id', $student->id)
             ->where('parent_id', $parent->id)
             ->exists();
 
-        if (! $exists) {
+        if (!$exists) {
             DB::table('student_guardians')->insert([
                 'school_id'    => $schoolId,
                 'student_id'   => $student->id,
@@ -420,7 +510,7 @@ class ParentController extends Controller
         } else {
             // Optional: update relationship/is_primary if re-assigned
             DB::table('student_guardians')
-                ->where('school_id', $schoolId)
+                ->when($schoolId !== null, fn($q) => $q->where('school_id', $schoolId))
                 ->where('student_id', $student->id)
                 ->where('parent_id', $parent->id)
                 ->update([
@@ -454,7 +544,7 @@ class ParentController extends Controller
 
         // Remove only this specific link
         DB::table('student_guardians')
-            ->where('school_id', $schoolId)
+            ->when($schoolId !== null, fn($q) => $q->where('school_id', $schoolId))
             ->where('student_id', $student->id)
             ->where('parent_id', $parent->id)
             ->delete();

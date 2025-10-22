@@ -3,9 +3,13 @@
 <head>
   <meta charset="utf-8">
   <style>
+    /* Page + base styles */
+    @page { margin: 8px 18px 16px 18px; }
+    html, body { margin: 0; padding: 0; }
+
     * { font-family: DejaVu Sans, sans-serif; }
     body { font-size: 12px; }
-    .wrap { border:1px solid #ddd; padding:16px; }
+    .wrap { padding:16px; }
     .left { width:28%; float:left; text-align:center; }
     .right { width:70%; float:right; }
     .img { border:1px solid #e5e5e5; padding:6px; display:inline-block; }
@@ -20,8 +24,10 @@
   </style>
 </head>
 <body>
+{{-- School Header --}}
+@include('pdf.partials.school_header')
 <div class="wrap">
-    <h2 style="text-align:center; margin-top:0;">Parent Profile</h2>
+  <h2 style="text-align:center; margin-top:0;">Parent Profile</h2>
 
   {{-- Parent --}}
   <div class="left">
@@ -45,6 +51,8 @@
       <tr><td class="label">Mobile</td><td>{{ $parent->mobile_number ?? 'N/A' }}</td></tr>
       <tr><td class="label">Occupation</td><td>{{ $parent->occupation ?? 'N/A' }}</td></tr>
       <tr><td class="label">Address</td><td>{{ $parent->address ?? 'N/A' }}</td></tr>
+      {{-- NEW: NID / Birth Certificate --}}
+      <tr><td class="label">NID / Birth Certificate</td><td>{{ $parent->nid_or_birthcertificate_no ?? 'N/A' }}</td></tr>
       <tr>
         <td class="label">Status</td>
         <td>

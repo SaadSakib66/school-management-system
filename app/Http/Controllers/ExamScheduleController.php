@@ -6,13 +6,16 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Storage; // ⬅️ for logo loading
 use Carbon\Carbon;
+
 use App\Models\Exam;
 use App\Models\ClassModel;
 use App\Models\ClassSubject;
 use App\Models\ExamSchedule;
 use App\Models\AssignClassTeacherModel;
 use App\Models\User;
+
 use Barryvdh\DomPDF\Facade\Pdf as PDF;
 
 class ExamScheduleController extends Controller
@@ -37,6 +40,83 @@ class ExamScheduleController extends Controller
                 ->with('error', 'Please select a school first.');
         }
         return null;
+    }
+
+    /**
+     * Universal School Header data (logo/name/EIIN/address/website)
+     * Returns: ['school','schoolLogoSrc','schoolPrint'=>[...] ]
+     */
+    protected function schoolHeaderData(?int $forceSchoolId = null): array
+    {
+        $schoolId =
+            $forceSchoolId
+            ?? $this->currentSchoolId()
+            ?? (Auth::check() ? (int) Auth::user()->school_id : null)
+            ?? session('current_school_id')
+            ?? session('school_id');
+
+        if (! $schoolId) {
+            $fallback = \App\Models\School::query()->orderBy('id')->value('id');
+            if ($fallback) $schoolId = (int) $fallback;
+            else abort(403, 'No school context.');
+        }
+
+        /** @var \App\Models\School $school */
+        $school = \App\Models\School::findOrFail($schoolId);
+
+        // Logo -> data URI
+        $logoFile = $school->logo ?? $school->school_logo ?? $school->photo ?? null;
+        $schoolLogoSrc = null;
+
+        if ($logoFile) {
+            $normalized = ltrim(str_replace(['public/', 'storage/'], '', $logoFile), '/');
+            $candidates = [$normalized, 'schools/'.basename($normalized), 'school_logos/'.basename($normalized)];
+            foreach ($candidates as $path) {
+                if (Storage::disk('public')->exists($path)) {
+                    $bin = Storage::disk('public')->get($path);
+
+                    $mime = 'image/png';
+                    if (class_exists(\finfo::class)) {
+                        $fi  = new \finfo(FILEINFO_MIME_TYPE);
+                        $det = $fi->buffer($bin);
+                        if ($det) $mime = $det;
+                    } else {
+                        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                        $map = [
+                            'jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png',
+                            'gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp','svg'=>'image/svg+xml'
+                        ];
+                        if (isset($map[$ext])) $mime = $map[$ext];
+                    }
+
+                    $schoolLogoSrc = 'data:'.$mime.';base64,'.base64_encode($bin);
+                    break;
+                }
+            }
+        }
+
+        // EIIN (common field names)
+        $eiin = null;
+        foreach (['eiin_num', 'eiin', 'eiin_code', 'eiin_no'] as $field) {
+            if (isset($school->{$field})) {
+                $val = trim((string) $school->{$field});
+                if ($val !== '') { $eiin = $val; break; }
+            }
+        }
+
+        $website = $school->website ?? $school->website_url ?? $school->domain ?? null;
+        if (is_string($website)) $website = trim($website);
+
+        return [
+            'school'        => $school,
+            'schoolLogoSrc' => $schoolLogoSrc,
+            'schoolPrint'   => [
+                'name'    => $school->name ?? $school->short_name ?? 'Unknown School',
+                'eiin'    => $eiin,
+                'address' => $school->address ?? $school->full_address ?? null,
+                'website' => $website,
+            ],
+        ];
     }
 
     /* ------------------------------------------------------------
@@ -388,7 +468,7 @@ class ExamScheduleController extends Controller
             'title'=>"Exam Schedule - {$exam->name} ({$class->name})",
             'exam'=>$exam,'class'=>$class,'rows'=>$table,
             'generated'=>now()->format('d M Y g:i A').' — Teacher Copy',
-        ];
+        ] + $this->schoolHeaderData(); // 🔹 header
 
         $pdf = PDF::loadView('pdf.exam_schedule', $params)->setPaper('a4','portrait');
         return $pdf->stream("Exam_Schedule_{$exam->name}_{$class->name}.pdf", ['Attachment'=>false]);
@@ -421,219 +501,114 @@ class ExamScheduleController extends Controller
     }
 
     /* ------------------------------------------------------------
-     * Parent view
+     * Parent view (with PDF branch)
      * ------------------------------------------------------------ */
-    // public function parentExamTimetable(Request $request)
-    // {
-    //     $parent = Auth::user();
-    //     abort_unless($parent && $parent->role === 'parent', 403);
+    // (Old commented version kept above)
 
-    //     $students = User::select('id','name','last_name','class_id')
-    //         ->where('role','student')->where('parent_id',$parent->id)
-    //         ->whereNull('deleted_at')->orderBy('name')->get();
-
-    //     $selectedStudentId = null;
-    //     if ($students->count() === 1) {
-    //         $selectedStudentId = $students->first()->id;
-    //     } elseif ($request->filled('student_id')) {
-    //         $candidate = (int)$request->get('student_id');
-    //         if ($students->firstWhere('id',$candidate)) $selectedStudentId = $candidate;
-    //     }
-    //     $selectedStudent = $selectedStudentId ? $students->firstWhere('id',$selectedStudentId) : null;
-
-    //     $exams = collect();
-    //     $class = null;
-
-    //     if ($selectedStudent && $selectedStudent->class_id) {
-    //         $class = ClassModel::select('id','name')->find($selectedStudent->class_id);
-
-    //         $exams = Exam::whereIn('id', function ($q) use ($selectedStudent) {
-    //                 $q->from('exam_schedules as es')
-    //                   ->join('class_subjects as cs', function ($j) use ($selectedStudent) {
-    //                       $j->on('cs.subject_id','=','es.subject_id')
-    //                         ->where('cs.class_id',$selectedStudent->class_id)
-    //                         ->where('cs.status',1)
-    //                         ->whereNull('cs.deleted_at');
-    //                   })
-    //                   ->select('es.exam_id')
-    //                   ->where('es.class_id',$selectedStudent->class_id)
-    //                   ->whereNull('es.deleted_at')
-    //                   ->groupBy('es.exam_id');
-    //             })->orderBy('name')->get(['id','name']);
-    //     }
-
-    //     $requestedExamId = $request->get('exam_id');
-    //     $selectedExamId  = $requestedExamId !== null ? (int)$requestedExamId : ($exams->count()===1 ? $exams->first()->id : null);
-    //     if ($selectedExamId && ! $exams->firstWhere('id',$selectedExamId)) $selectedExamId = null;
-    //     $selectedExam = $selectedExamId ? $exams->firstWhere('id',$selectedExamId) : null;
-
-    //     $rows = collect();
-    //     if ($selectedStudent && $selectedStudent->class_id && $selectedExam) {
-    //         $rows = ExamSchedule::with('subject:id,name')
-    //             ->join('class_subjects as cs', function ($j) use ($selectedStudent) {
-    //                 $j->on('cs.subject_id','=','exam_schedules.subject_id')
-    //                   ->where('cs.class_id',$selectedStudent->class_id)
-    //                   ->where('cs.status',1)
-    //                   ->whereNull('cs.deleted_at');
-    //             })
-    //             ->where('exam_schedules.class_id',$selectedStudent->class_id)
-    //             ->where('exam_schedules.exam_id',$selectedExam->id)
-    //             ->whereNull('exam_schedules.deleted_at')
-    //             ->select('exam_schedules.*')
-    //             ->orderBy('exam_schedules.exam_date')
-    //             ->orderBy('exam_schedules.start_time')
-    //             ->get();
-    //     }
-
-    //     return view('parent.my_exam_timetable', [
-    //         'header_title'=>'My Child’s Exam Schedule',
-    //         'students'=>$students,
-    //         'selectedStudentId'=>$selectedStudentId,
-    //         'selectedStudent'=>$selectedStudent,
-    //         'class'=>$class,
-    //         'exams'=>$exams,
-    //         'selectedExamId'=>$selectedExam?->id,
-    //         'selectedExam'=>$selectedExam,
-    //         'rows'=>$rows,
-    //     ]);
-    // }
-
-
-
-public function parentExamTimetable(Request $request)
-{
-    $parent = Auth::user();
-    abort_unless($parent && $parent->role === 'parent', 403);
-
-    $students = User::select('id','name','last_name','class_id')
-        ->where('role','student')->where('parent_id',$parent->id)
-        ->orderBy('name')->get();
-
-    $selectedStudentId = null;
-    if ($students->count() === 1) {
-        $selectedStudentId = $students->first()->id;
-    } elseif ($request->filled('student_id')) {
-        $candidate = (int)$request->get('student_id');
-        if ($students->firstWhere('id',$candidate)) $selectedStudentId = $candidate;
-    }
-    $selectedStudent = $selectedStudentId ? $students->firstWhere('id',$selectedStudentId) : null;
-
-    $exams = collect();
-    $class = null;
-
-    if ($selectedStudent && $selectedStudent->class_id) {
-        $class = ClassModel::select('id','name')->find($selectedStudent->class_id);
-
-        $exams = Exam::whereIn('id', function ($q) use ($selectedStudent) {
-                $q->from('exam_schedules as es')
-                  ->join('class_subjects as cs', function ($j) use ($selectedStudent) {
-                      $j->on('cs.subject_id','=','es.subject_id')
-                        ->where('cs.class_id',$selectedStudent->class_id)
-                        ->where('cs.status',1)
-                        ->whereNull('cs.deleted_at');
-                  })
-                  ->select('es.exam_id')
-                  ->where('es.class_id',$selectedStudent->class_id)
-                  ->whereNull('es.deleted_at')
-                  ->groupBy('es.exam_id');
-            })->orderBy('name')->get(['id','name']);
-    }
-
-    $requestedExamId = $request->get('exam_id');
-    $selectedExamId  = $requestedExamId !== null ? (int)$requestedExamId : ($exams->count()===1 ? $exams->first()->id : null);
-    if ($selectedExamId && ! $exams->firstWhere('id',$selectedExamId)) $selectedExamId = null;
-    $selectedExam = $selectedExamId ? $exams->firstWhere('id',$selectedExamId) : null;
-
-    $rows = collect();
-    if ($selectedStudent && $selectedStudent->class_id && $selectedExam) {
-        $rows = ExamSchedule::with('subject:id,name')
-            ->join('class_subjects as cs', function ($j) use ($selectedStudent) {
-                $j->on('cs.subject_id','=','exam_schedules.subject_id')
-                  ->where('cs.class_id',$selectedStudent->class_id)
-                  ->where('cs.status',1)
-                  ->whereNull('cs.deleted_at');
-            })
-            ->where('exam_schedules.class_id',$selectedStudent->class_id)
-            ->where('exam_schedules.exam_id',$selectedExam->id)
-            ->whereNull('exam_schedules.deleted_at')
-            ->select('exam_schedules.*')
-            ->orderBy('exam_schedules.exam_date')
-            ->orderBy('exam_schedules.start_time')
-            ->get();
-    }
-
-    /* ---------- PDF Download branch ---------- */
-    if ($request->boolean('download')) {
-        if (! $selectedStudent || ! $class || ! $selectedExam) {
-            return back()->with('error', 'Please choose a student and an exam first.');
-        }
-        if ($rows->isEmpty()) {
-            return back()->with('error', 'No exam schedule found for this selection.');
-        }
-
-        $data = [
-            'title'          => 'Exam Schedule',
-            'student'        => $selectedStudent,
-            'class'          => $class,
-            'exam'           => $selectedExam,
-            'rows'           => $rows,
-            'generated_at'   => now(),
-        ];
-
-        $filename = sprintf(
-            'Exam-Schedule_%s_%s_%s.pdf',
-            \Illuminate\Support\Str::slug(trim(($selectedStudent->name ?? '').' '.($selectedStudent->last_name ?? ''))),
-            \Illuminate\Support\Str::slug($class->name ?? 'class'),
-            \Illuminate\Support\Str::slug($selectedExam->name ?? 'exam')
-        );
-
-        return Pdf::loadView('pdf.parent_exam_schedule', $data)
-            ->setPaper('a4', 'portrait')
-            ->stream($filename);   
-    }
-    /* ---------- /PDF Download branch ---------- */
-
-    return view('parent.my_exam_timetable', [
-        'header_title'=>'My Child’s Exam Schedule',
-        'students'=>$students,
-        'selectedStudentId'=>$selectedStudentId,
-        'selectedStudent'=>$selectedStudent,
-        'class'=>$class,
-        'exams'=>$exams,
-        'selectedExamId'=>$selectedExam?->id,
-        'selectedExam'=>$selectedExam,
-        'rows'=>$rows,
-    ]);
-}
-
-
-    /** AJAX: Exams for a given student (parent must own that student). */
-    public function examsForStudent(int $studentId)
+    public function parentExamTimetable(Request $request)
     {
         $parent = Auth::user();
         abort_unless($parent && $parent->role === 'parent', 403);
 
-        $student = User::select('id','class_id')
-            ->where('id',$studentId)->where('role','student')
-            ->where('parent_id',$parent->id)->whereNull('deleted_at')->first();
+        $students = User::select('id','name','last_name','class_id')
+            ->where('role','student')->where('parent_id',$parent->id)
+            ->orderBy('name')->get();
 
-        if (! $student || ! $student->class_id) return response()->json([]);
+        $selectedStudentId = null;
+        if ($students->count() === 1) {
+            $selectedStudentId = $students->first()->id;
+        } elseif ($request->filled('student_id')) {
+            $candidate = (int)$request->get('student_id');
+            if ($students->firstWhere('id',$candidate)) $selectedStudentId = $candidate;
+        }
+        $selectedStudent = $selectedStudentId ? $students->firstWhere('id',$selectedStudentId) : null;
 
-        $exams = Exam::whereIn('id', function ($q) use ($student) {
-                $q->from('exam_schedules as es')
-                  ->join('class_subjects as cs', function ($j) use ($student) {
-                      $j->on('cs.subject_id','=','es.subject_id')
-                        ->where('cs.class_id',$student->class_id)
-                        ->where('cs.status',1)
-                        ->whereNull('cs.deleted_at');
-                  })
-                  ->select('es.exam_id')
-                  ->where('es.class_id',$student->class_id)
-                  ->whereNull('es.deleted_at')
-                  ->groupBy('es.exam_id');
-            })->orderBy('name')->get(['id','name']);
+        $exams = collect();
+        $class = null;
 
-        return response()->json($exams);
+        if ($selectedStudent && $selectedStudent->class_id) {
+            $class = ClassModel::select('id','name')->find($selectedStudent->class_id);
+
+            $exams = Exam::whereIn('id', function ($q) use ($selectedStudent) {
+                    $q->from('exam_schedules as es')
+                      ->join('class_subjects as cs', function ($j) use ($selectedStudent) {
+                          $j->on('cs.subject_id','=','es.subject_id')
+                            ->where('cs.class_id',$selectedStudent->class_id)
+                            ->where('cs.status',1)
+                            ->whereNull('cs.deleted_at');
+                      })
+                      ->select('es.exam_id')
+                      ->where('es.class_id',$selectedStudent->class_id)
+                      ->whereNull('es.deleted_at')
+                      ->groupBy('es.exam_id');
+                })->orderBy('name')->get(['id','name']);
+        }
+
+        $requestedExamId = $request->get('exam_id');
+        $selectedExamId  = $requestedExamId !== null ? (int)$requestedExamId : ($exams->count()===1 ? $exams->first()->id : null);
+        if ($selectedExamId && ! $exams->firstWhere('id',$selectedExamId)) $selectedExamId = null;
+        $selectedExam = $selectedExamId ? $exams->firstWhere('id',$selectedExamId) : null;
+
+        $rows = collect();
+        if ($selectedStudent && $selectedStudent->class_id && $selectedExam) {
+            $rows = ExamSchedule::with('subject:id,name')
+                ->join('class_subjects as cs', function ($j) use ($selectedStudent) {
+                    $j->on('cs.subject_id','=','exam_schedules.subject_id')
+                      ->where('cs.class_id',$selectedStudent->class_id)
+                      ->where('cs.status',1)
+                      ->whereNull('cs.deleted_at');
+                })
+                ->where('exam_schedules.class_id',$selectedStudent->class_id)
+                ->where('exam_schedules.exam_id',$selectedExam->id)
+                ->whereNull('exam_schedules.deleted_at')
+                ->select('exam_schedules.*')
+                ->orderBy('exam_schedules.exam_date')
+                ->orderBy('exam_schedules.start_time')
+                ->get();
+        }
+
+        /* ---------- PDF Download branch ---------- */
+        if ($request->boolean('download')) {
+            if (! $selectedStudent || ! $class || ! $selectedExam) {
+                return back()->with('error', 'Please choose a student and an exam first.');
+            }
+            if ($rows->isEmpty()) {
+                return back()->with('error', 'No exam schedule found for this selection.');
+            }
+
+            $data = [
+                'title'        => 'Exam Schedule',
+                'student'      => $selectedStudent,
+                'class'        => $class,
+                'exam'         => $selectedExam,
+                'rows'         => $rows,
+                'generated_at' => now(),
+            ] + $this->schoolHeaderData(); // 🔹 header
+
+            $filename = sprintf(
+                'Exam-Schedule_%s_%s_%s.pdf',
+                \Illuminate\Support\Str::slug(trim(($selectedStudent->name ?? '').' '.($selectedStudent->last_name ?? ''))),
+                \Illuminate\Support\Str::slug($class->name ?? 'class'),
+                \Illuminate\Support\Str::slug($selectedExam->name ?? 'exam')
+            );
+
+            return PDF::loadView('pdf.parent_exam_schedule', $data)
+                ->setPaper('a4', 'portrait')
+                ->stream($filename);
+        }
+        /* ---------- /PDF Download branch ---------- */
+
+        return view('parent.my_exam_timetable', [
+            'header_title'=>'My Child’s Exam Schedule',
+            'students'=>$students,
+            'selectedStudentId'=>$selectedStudentId,
+            'selectedStudent'=>$selectedStudent,
+            'class'=>$class,
+            'exams'=>$exams,
+            'selectedExamId'=>$selectedExam?->id,
+            'selectedExam'=>$selectedExam,
+            'rows'=>$rows,
+        ]);
     }
 
     public function download(Request $request)
@@ -686,7 +661,7 @@ public function parentExamTimetable(Request $request)
             'title'=>"Exam Schedule - {$exam->name} ({$class->name})",
             'exam'=>$exam,'class'=>$class,'rows'=>$table,
             'generated'=>now()->format('d M Y g:i A'),
-        ];
+        ] + $this->schoolHeaderData(); // 🔹 header
 
         $pdf = PDF::loadView('pdf.exam_schedule', $params)->setPaper('a4','portrait');
         return $pdf->stream("Exam_Schedule_{$exam->name}_{$class->name}.pdf", ['Attachment'=>false]);

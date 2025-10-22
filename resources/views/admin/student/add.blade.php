@@ -16,6 +16,25 @@
 
         <div class="col-md-8">
           <div class="card card-primary card-outline mb-4">
+
+            {{-- Validation + flash messages --}}
+            @if ($errors->any())
+              <div class="alert alert-danger mx-3 mt-3">
+                <strong>There were some problems with your input:</strong>
+                <ul class="mb-0 mt-2">
+                  @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                  @endforeach
+                </ul>
+              </div>
+            @endif
+            @if (session('error'))
+              <div class="alert alert-danger mx-3 mt-3">{{ session('error') }}</div>
+            @endif
+            @if (session('success'))
+              <div class="alert alert-success mx-3 mt-3">{{ session('success') }}</div>
+            @endif
+
             <form action="{{ isset($user) ? route('admin.student.update-student', $user->id) : route('admin.student.add-student') }}" method="POST" enctype="multipart/form-data">
               @csrf
 
@@ -33,14 +52,31 @@
                     <input type="text" name="last_name" class="form-control" value="{{ old('last_name', $user->last_name ?? '') }}" required />
                   </div>
 
-                  <div class="col-md-6 mb-3">
-                    <label class="form-label">Admission Number <span class="text-danger">*</span></label>
-                    <input type="text" name="admission_number" class="form-control" value="{{ old('admission_number', $user->admission_number ?? '') }}" required />
+                  {{-- Admission & Roll (auto if left blank) --}}
+                  <div class="col-md-6 mb-1">
+                    <label class="form-label">Admission Number</label>
+                    <input
+                      type="text"
+                      name="admission_number"
+                      id="admission_number"
+                      class="form-control"
+                      value="{{ old('admission_number', $user->admission_number ?? '') }}"
+                      placeholder="YY#### (auto-generated if left blank)"
+                    />
+                    <small class="text-muted">Auto-prefixed with last two digits of the admission year.</small>
                   </div>
 
-                  <div class="col-md-6 mb-3">
-                    <label class="form-label">Roll Number <span class="text-danger">*</span></label>
-                    <input type="text" name="roll_number" class="form-control" value="{{ old('roll_number', $user->roll_number ?? '') }}" required />
+                  <div class="col-md-6 mb-1">
+                    <label class="form-label">Roll Number</label>
+                    <input
+                      type="text"
+                      name="roll_number"
+                      id="roll_number"
+                      class="form-control"
+                      value="{{ old('roll_number', $user->roll_number ?? '') }}"
+                      placeholder="YY#### (auto-generated if left blank)"
+                    />
+                    <small class="text-muted">Unique per class; also starts with YY.</small>
                   </div>
 
                   <div class="col-md-6 mb-3">
@@ -84,7 +120,14 @@
 
                   <div class="col-md-6 mb-3">
                     <label class="form-label">Admission Date <span class="text-danger">*</span></label>
-                    <input type="date" name="admission_date" class="form-control" value="{{ old('admission_date', $user->admission_date ?? '') }}" required />
+                    <input
+                      type="date"
+                      name="admission_date"
+                      id="admission_date"
+                      class="form-control"
+                      value="{{ old('admission_date', $user->admission_date ?? ($defaultAdmissionDate ?? '')) }}"
+                      required
+                    />
                   </div>
 
                   <div class="col-md-6 mb-3">
@@ -123,6 +166,18 @@
                     <input type="text" name="weight" class="form-control" value="{{ old('weight', $user->weight ?? '') }}" />
                   </div>
 
+                  {{-- Student NID / Birth Certificate --}}
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">NID / Birth Certificate No. (Student)</label>
+                    <input
+                      type="text"
+                      name="nid_or_birthcertificate_no"
+                      class="form-control"
+                      value="{{ old('nid_or_birthcertificate_no', $user->nid_or_birthcertificate_no ?? '') }}"
+                      placeholder="e.g., 1990XXXXXXX"
+                    >
+                  </div>
+
                   <div class="col-md-6 mb-3">
                     <label class="form-label">Role</label>
                     <input type="text" class="form-control" value="Student" disabled>
@@ -144,7 +199,7 @@
                 </div>
               </div>
 
-              {{-- NEW: Parents / Guardians --}}
+              {{-- Parents / Guardians --}}
               <div class="card-body border-top">
                 <h5 class="mb-3">Parents / Guardians (optional)</h5>
                 <div class="row g-3">
@@ -178,7 +233,6 @@
                     <input type="text" name="mother[address]" class="form-control" value="{{ old('mother.address', $mother->address ?? '') }}">
                   </div>
 
-                  {{-- Mother photo & NID/BC --}}
                   <div class="col-md-6">
                     <label class="form-label">Parent Photo (Mother)</label>
                     <input type="file" name="mother[parent_photo]" class="form-control">
@@ -244,7 +298,6 @@
                     <input type="text" name="father[address]" class="form-control" value="{{ old('father.address', $father->address ?? '') }}">
                   </div>
 
-                  {{-- Father photo & NID/BC --}}
                   <div class="col-md-6">
                     <label class="form-label">Parent Photo (Father)</label>
                     <input type="file" name="father[parent_photo]" class="form-control">
@@ -294,5 +347,48 @@
     </div>
   </div>
 </main>
+
+{{-- Fast preview of next Admission/Roll using lightweight endpoint (no locks) --}}
+<script>
+  (function(){
+    const classSel = document.getElementById('class_id');
+    const dateInp  = document.getElementById('admission_date');
+    const admInp   = document.getElementById('admission_number');
+    const rollInp  = document.getElementById('roll_number');
+
+    async function previewCodes(){
+      const cid = classSel?.value;
+      const ad  = dateInp?.value;
+      if(!cid) return;
+
+      try{
+        const url = new URL("{{ route('admin.student.next-codes') }}", window.location.origin);
+        url.searchParams.set('class_id', cid);
+        if(ad) url.searchParams.set('admission_date', ad);
+
+        const res = await fetch(url.toString(), { headers: { 'X-Requested-With':'XMLHttpRequest' }});
+        if(!res.ok) return;
+
+        const data = await res.json();
+
+        // Only prefill when empty so admins can still type manually
+        if(admInp && (!admInp.value || admInp.value.trim()==='')) admInp.value = data.admission_number || '';
+        if(rollInp && (!rollInp.value || rollInp.value.trim()==='')) rollInp.value = data.roll_number || '';
+
+        const yy = data.yy || (new Date().getFullYear().toString().slice(-2));
+        if(admInp && !admInp.value)  admInp.placeholder  = yy + '####';
+        if(rollInp && !rollInp.value) rollInp.placeholder = yy + '####';
+      }catch(e){
+        // ignore; server still generates safely on submit
+      }
+    }
+
+    classSel?.addEventListener('change', previewCodes);
+    dateInp?.addEventListener('change', previewCodes);
+    document.addEventListener('DOMContentLoaded', function(){
+      if(classSel?.value){ previewCodes(); }
+    });
+  })();
+</script>
 
 @endsection

@@ -3,9 +3,18 @@
 <head>
     <meta charset="utf-8">
     <style>
+        /* ↓ Control the page margins Dompdf uses */
+        @page {
+            margin: 8px 18px 16px 18px; /* top, right, bottom, left */
+        }
+
+        /* ↓ Remove browser default margins that Dompdf respects */
+        html, body { margin: 0; padding: 0; }
+
         * { font-family: DejaVu Sans, sans-serif; }
         body { font-size: 12px; }
-        .wrap { border: 1px solid #ddd; padding: 16px; }
+
+        .wrap {padding: 16px; }
         .left { width: 28%; float: left; text-align: center; }
         .right { width: 70%; float: right; }
         .img { border: 1px solid #e5e5e5; padding: 6px; display: inline-block; }
@@ -16,9 +25,14 @@
         .active { background:#28a745; color:#fff; }
         .inactive { background:#dc3545; color:#fff; }
         .clear { clear: both; }
+        h2 { margin: 10px 0 14px; }
     </style>
 </head>
 <body>
+
+{{-- ✅ Universal School Header --}}
+@include('pdf.partials.school_header')
+
 <div class="wrap">
     <h2 style="text-align:center; margin-top:0;">Admin Profile</h2>
 

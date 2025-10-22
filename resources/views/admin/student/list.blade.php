@@ -27,7 +27,7 @@
               <h3 class="card-title">Student List</h3>
             </div>
 
-{{-- 🔎 Filters --}}
+            {{-- 🔎 Filters --}}
             <div class="p-3 pb-0">
               <form method="GET" action="{{ route('admin.student.list') }}" class="mb-2">
                 <div class="row g-2 align-items-end">
@@ -42,6 +42,10 @@
                   <div class="col-md-2">
                     <label class="form-label mb-1">Mobile</label>
                     <input type="text" name="mobile" value="{{ request('mobile') }}" class="form-control" placeholder="Mobile">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label mb-1">Roll Number</label>
+                    <input type="text" name="roll_number" value="{{ request('roll_number') }}" class="form-control" placeholder="e.g., 25XXXX">
                   </div>
                   <div class="col-md-2">
                     <label class="form-label mb-1">Gender</label>
@@ -85,7 +89,9 @@
                   <thead>
                     <tr>
                       <th>Serial</th>
-                      <th>Student ID</th>
+                      <th>Std ID</th>
+                      <th>Adm. No.</th>
+                      <th>Roll No.</th>
                       <th>Photo</th>
                       <th>Name</th>
                       <th>Gender</th>
@@ -102,6 +108,8 @@
                       <tr>
                         <td>{{ ($getRecord->currentPage()-1)*$getRecord->perPage() + $loop->iteration }}</td>
                         <td>{{ $value->id}}</td>
+                        <td>{{ $value->admission_number ?? 'N/A' }}</td>
+                        <td>{{ $value->roll_number ?? 'N/A' }}</td>
                         <td>
                           @if($value->student_photo)
                             @php
@@ -125,23 +133,23 @@
                         </td>
                         <td>{{ \Carbon\Carbon::parse($value->created_at)->format('d M Y') }}</td>
                         <td>
-                            <a href="{{ route('admin.student.download', ['id' => $value->id, 'slug' => \Illuminate\Support\Str::slug($value->name)]) }}"
-                                        target="_blank" rel="noopener"
-                                        class="btn btn-outline-danger btn-sm" title="Download PDF">
-                                            <i class="bi bi-file-earmark-pdf-fill"></i>
-                            </a>
-                            <a href="{{ route('admin.student.edit-student', $value->id) }}" class="btn btn-success btn-sm">Edit</a>
+                          <a href="{{ route('admin.student.download', ['id' => $value->id, 'slug' => \Illuminate\Support\Str::slug($value->name)]) }}"
+                             target="_blank" rel="noopener"
+                             class="btn btn-outline-danger btn-sm" title="Download PDF">
+                            <i class="bi bi-file-earmark-pdf-fill"></i>
+                          </a>
+                          <a href="{{ route('admin.student.edit-student', $value->id) }}" class="btn btn-success btn-sm">Edit</a>
 
-                            <form action="{{ route('admin.student.delete-student') }}" method="POST" style="display:inline;">
-                                @csrf
-                                <input type="hidden" name="id" value="{{ $value->id }}">
-                                <button type="submit" class="btn btn-danger btn-sm"
+                          <form action="{{ route('admin.student.delete-student') }}" method="POST" style="display:inline;">
+                            @csrf
+                            <input type="hidden" name="id" value="{{ $value->id }}">
+                            <button type="submit" class="btn btn-danger btn-sm"
                                     onclick="return confirm('Are you sure you want to delete this admin?')">Delete</button>
-                            </form>
+                          </form>
                         </td>
                       </tr>
                     @empty
-                      <tr><td colspan="10" class="text-center p-4">No students found.</td></tr>
+                      <tr><td colspan="13" class="text-center p-4">No students found.</td></tr>
                     @endforelse
                   </tbody>
                 </table>

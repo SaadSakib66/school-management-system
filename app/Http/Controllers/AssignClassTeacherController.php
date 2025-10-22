@@ -12,6 +12,7 @@ use Illuminate\Validation\Rule;
 
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
 class AssignClassTeacherController extends Controller
 {
@@ -23,148 +24,201 @@ class AssignClassTeacherController extends Controller
         return (int) (session('current_school_id') ?: Auth::user()->school_id);
     }
 
+    /**
+     * Universal School Header data (logo/name/EIIN/address/website)
+     * Returns: ['school','schoolLogoSrc','schoolPrint'=>[...] ]
+     */
+    protected function schoolHeaderData(?int $forceSchoolId = null): array
+    {
+        $schoolId =
+            $forceSchoolId
+            ?? $this->currentSchoolId()
+            ?? (Auth::check() ? (int) Auth::user()->school_id : null)
+            ?? session('current_school_id')
+            ?? session('school_id');
+
+        if (!$schoolId) {
+            $fallback = \App\Models\School::query()->orderBy('id')->value('id');
+            if ($fallback) $schoolId = (int) $fallback;
+            else abort(403, 'No school context.');
+        }
+
+        /** @var \App\Models\School $school */
+        $school = \App\Models\School::findOrFail($schoolId);
+
+        // Logo -> data URI (tries a few common paths on the public disk)
+        $logoFile = $school->logo ?? $school->school_logo ?? $school->photo ?? null;
+        $schoolLogoSrc = null;
+
+        if ($logoFile) {
+            $normalized = ltrim(str_replace(['public/', 'storage/'], '', $logoFile), '/');
+            $candidates = [$normalized, 'schools/'.basename($normalized), 'school_logos/'.basename($normalized)];
+            foreach ($candidates as $path) {
+                if (Storage::disk('public')->exists($path)) {
+                    $bin = Storage::disk('public')->get($path);
+
+                    // Mime detect
+                    $mime = 'image/png';
+                    if (class_exists(\finfo::class)) {
+                        $fi  = new \finfo(FILEINFO_MIME_TYPE);
+                        $det = $fi->buffer($bin);
+                        if ($det) $mime = $det;
+                    } else {
+                        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                        $map = [
+                            'jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png',
+                            'gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp','svg'=>'image/svg+xml'
+                        ];
+                        if (isset($map[$ext])) $mime = $map[$ext];
+                    }
+
+                    $schoolLogoSrc = 'data:'.$mime.';base64,'.base64_encode($bin);
+                    break;
+                }
+            }
+        }
+
+        // EIIN (your DB uses eiin_num)
+        $eiin = null;
+        foreach (['eiin_num', 'eiin', 'eiin_code', 'eiin_no'] as $field) {
+            if (isset($school->{$field})) {
+                $val = trim((string) $school->{$field});
+                if ($val !== '') { $eiin = $val; break; }
+            }
+        }
+
+        $website = $school->website ?? $school->website_url ?? $school->domain ?? null;
+        if (is_string($website)) $website = trim($website);
+
+        return [
+            'school'        => $school,
+            'schoolLogoSrc' => $schoolLogoSrc,
+            'schoolPrint'   => [
+                'name'    => $school->name ?? $school->short_name ?? 'Unknown School',
+                'eiin'    => $eiin,
+                'address' => $school->address ?? $school->full_address ?? null,
+                'website' => $website,
+            ],
+        ];
+    }
+
     /* =======================
      * Admin side
      * ======================= */
 
-    // public function list(Request $request)
-    // {
-    //     // Use JOINs + aliases so Blade fields (class_name/teacher_name/created_by_name) exist.
-    //     $data['getRecord'] = AssignClassTeacherModel::query()
-    //         ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
-    //         ->leftJoin('users as t', function ($j) {
-    //             $j->on('t.id', '=', 'assign_class_teacher.teacher_id')
-    //               ->whereNull('t.deleted_at');
-    //         })
-    //         ->leftJoin('users as u', function ($j) {
-    //             $j->on('u.id', '=', 'assign_class_teacher.created_by')
-    //               ->whereNull('u.deleted_at');
-    //         })
-    //         ->select([
-    //             'assign_class_teacher.*',
-    //             'c.name as class_name',
-    //             't.name as teacher_name',
-    //             'u.name as created_by_name',
-    //         ])
-    //         ->orderByDesc('assign_class_teacher.id')
-    //         ->paginate(10);
+    public function list(Request $request)
+    {
+        $schoolId = $this->currentSchoolId();
 
-    //     $data['header_title'] = 'Assign Class Teacher List';
-    //     return view('admin.assign_class_teacher.list', $data);
-    // }
+        $q = AssignClassTeacherModel::query()
+            ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
+            ->leftJoin('users as t', function ($j) {
+                $j->on('t.id', '=', 'assign_class_teacher.teacher_id')->whereNull('t.deleted_at');
+            })
+            ->leftJoin('users as u', function ($j) {
+                $j->on('u.id', '=', 'assign_class_teacher.created_by')->whereNull('u.deleted_at');
+            })
+            ->select([
+                'assign_class_teacher.*',
+                'c.name as class_name',
+                't.name as teacher_name',
+                'u.name as created_by_name',
+            ])
+            ->orderBy('c.name')
+            ->orderBy('t.name');
 
-public function list(Request $request)
-{
-    $schoolId = $this->currentSchoolId();
+        // Filters
+        if ($request->filled('class_id')) {
+            $q->where('assign_class_teacher.class_id', (int) $request->class_id);
+        }
+        if ($request->filled('teacher_id')) {
+            $q->where('assign_class_teacher.teacher_id', (int) $request->teacher_id);
+        }
+        if ($request->filled('status') && in_array((int) $request->status, [0,1], true)) {
+            $q->where('assign_class_teacher.status', (int) $request->status);
+        }
 
-    $q = AssignClassTeacherModel::query()
-        ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
-        ->leftJoin('users as t', function ($j) {
-            $j->on('t.id', '=', 'assign_class_teacher.teacher_id')->whereNull('t.deleted_at');
-        })
-        ->leftJoin('users as u', function ($j) {
-            $j->on('u.id', '=', 'assign_class_teacher.created_by')->whereNull('u.deleted_at');
-        })
-        ->select([
-            'assign_class_teacher.*',
-            'c.name as class_name',
-            't.name as teacher_name',
-            'u.name as created_by_name',
-        ])
-        ->orderBy('c.name')
-        ->orderBy('t.name');
+        $data['getRecord'] = $q->paginate(10)->appends($request->except('page'));
 
-    // 🔎 Filters
-    if ($request->filled('class_id')) {
-        $q->where('assign_class_teacher.class_id', (int) $request->class_id);
-    }
-    if ($request->filled('teacher_id')) {
-        $q->where('assign_class_teacher.teacher_id', (int) $request->teacher_id);
-    }
-    if ($request->filled('status') && in_array((int) $request->status, [0,1], true)) {
-        $q->where('assign_class_teacher.status', (int) $request->status);
+        // dropdowns
+        $data['getClass'] = ClassModel::query()
+            ->select('id','name')->where('school_id',$schoolId)->orderBy('name')->get();
+
+        $data['getTeachers'] = User::query()
+            ->select('id','name')
+            ->where('role','teacher')->where('school_id',$schoolId)
+            ->orderBy('name')->get();
+
+        $data['header_title'] = 'Assign Class Teacher List';
+        return view('admin.assign_class_teacher.list', $data);
     }
 
-    $data['getRecord'] = $q->paginate(10)->appends($request->except('page'));
+    public function download(Request $request)
+    {
+        // Guard: must hit Search first (keeps UX consistent)
+        if ($request->input('did_search') !== '1') {
+            return back()->with('error', 'Please click Search after setting filters, then use Download.');
+        }
 
-    // dropdowns
-    $data['getClass'] = ClassModel::query()
-        ->select('id','name')->where('school_id',$schoolId)->orderBy('name')->get();
+        $q = AssignClassTeacherModel::query()
+            ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
+            ->leftJoin('users as t', function ($j) {
+                $j->on('t.id', '=', 'assign_class_teacher.teacher_id')->whereNull('t.deleted_at');
+            })
+            ->leftJoin('users as u', function ($j) {
+                $j->on('u.id', '=', 'assign_class_teacher.created_by')->whereNull('u.deleted_at');
+            })
+            ->select([
+                'assign_class_teacher.*',
+                'c.name as class_name',
+                't.name as teacher_name',
+                'u.name as created_by_name',
+            ])
+            ->orderBy('c.name')
+            ->orderBy('t.name');
 
-    $data['getTeachers'] = User::query()
-        ->select('id','name')
-        ->where('role','teacher')->where('school_id',$schoolId)
-        ->orderBy('name')->get();
+        // Normalize & apply filters (class/teacher/status)
+        $classId   = $request->filled('class_id')   ? (int) $request->class_id   : null;
+        $teacherId = $request->filled('teacher_id') ? (int) $request->teacher_id : null;
 
-    $data['header_title'] = 'Assign Class Teacher List';
-    return view('admin.assign_class_teacher.list', $data);
-}
+        $status = null;
+        if ($request->filled('status')) {
+            $raw = strtolower((string)$request->status);
+            $status = in_array($raw, ['1','active'], true) ? 1 : (in_array($raw,['0','inactive'], true) ? 0 : null);
+        }
 
+        if (!is_null($classId))   $q->where('assign_class_teacher.class_id', $classId);
+        if (!is_null($teacherId)) $q->where('assign_class_teacher.teacher_id', $teacherId);
+        if (!is_null($status))    $q->where('assign_class_teacher.status', $status);
 
-public function download(Request $request)
-{
-    // Guard: must hit Search first (keeps UX consistent)
-    if ($request->input('did_search') !== '1') {
-        return back()->with('error', 'Please click Search after setting filters, then use Download.');
+        $records = $q->get();
+
+        // 🔹 School header data (logo/name/EIIN/address/website)
+        $header = $this->schoolHeaderData();
+
+        $data = [
+            'records' => $records,
+            'filters' => ['class_id'=>$classId, 'teacher_id'=>$teacherId, 'status'=>$status],
+        ] + $header;
+
+        // filename
+        $fileName = 'assign-class-teacher';
+        if (!is_null($classId)) {
+            $class = ClassModel::find($classId);
+            if ($class) $fileName .= '-' . Str::slug($class->name);
+        }
+        if (!is_null($teacherId)) {
+            $teacher = User::find($teacherId);
+            if ($teacher) $fileName .= '-' . Str::slug($teacher->name);
+        }
+        if (!is_null($status)) $fileName .= '-' . ($status ? 'active' : 'inactive');
+        $fileName .= '.pdf';
+
+        $pdf = Pdf::loadView('pdf.assign_class_teacher_list', $data)
+                  ->setPaper('A4', 'portrait');
+
+        return $pdf->stream($fileName, ['Attachment' => false]);
     }
-
-    $q = AssignClassTeacherModel::query()
-        ->leftJoin('classes as c', 'c.id', '=', 'assign_class_teacher.class_id')
-        ->leftJoin('users as t', function ($j) {
-            $j->on('t.id', '=', 'assign_class_teacher.teacher_id')->whereNull('t.deleted_at');
-        })
-        ->leftJoin('users as u', function ($j) {
-            $j->on('u.id', '=', 'assign_class_teacher.created_by')->whereNull('u.deleted_at');
-        })
-        ->select([
-            'assign_class_teacher.*',
-            'c.name as class_name',
-            't.name as teacher_name',
-            'u.name as created_by_name',
-        ])
-        ->orderBy('c.name')
-        ->orderBy('t.name');
-
-    // Normalize & apply filters (class/teacher/status)
-    $classId   = $request->filled('class_id')   ? (int) $request->class_id   : null;
-    $teacherId = $request->filled('teacher_id') ? (int) $request->teacher_id : null;
-
-    $status = null;
-    if ($request->filled('status')) {
-        $raw = strtolower((string)$request->status);
-        $status = in_array($raw, ['1','active'], true) ? 1 : (in_array($raw,['0','inactive'], true) ? 0 : null);
-    }
-
-    if (!is_null($classId))   $q->where('assign_class_teacher.class_id', $classId);
-    if (!is_null($teacherId)) $q->where('assign_class_teacher.teacher_id', $teacherId);
-    if (!is_null($status))    $q->where('assign_class_teacher.status', $status);
-
-    $records = $q->get();
-
-    $data = [
-        'records' => $records,
-        'filters' => ['class_id'=>$classId, 'teacher_id'=>$teacherId, 'status'=>$status],
-    ];
-
-    // filename
-    $fileName = 'assign-class-teacher';
-    if (!is_null($classId)) {
-        $class = ClassModel::find($classId);
-        if ($class) $fileName .= '-' . Str::slug($class->name);
-    }
-    if (!is_null($teacherId)) {
-        $teacher = User::find($teacherId);
-        if ($teacher) $fileName .= '-' . Str::slug($teacher->name);
-    }
-    if (!is_null($status)) $fileName .= '-' . ($status ? 'active' : 'inactive');
-    $fileName .= '.pdf';
-
-    $pdf = Pdf::loadView('pdf.assign_class_teacher_list', $data)
-              ->setPaper('A4', 'landscape');
-
-    return $pdf->stream($fileName, ['Attachment' => false]);
-}
-
 
     public function add()
     {
@@ -215,14 +269,11 @@ public function download(Request $request)
 
             if ($row) {
                 $row->status = (int) $request->status;
-                // make sure legacy rows have school_id
-                if (!$row->school_id) {
-                    $row->school_id = $schoolId;
-                }
+                if (!$row->school_id) $row->school_id = $schoolId;
                 $row->save();
             } else {
                 AssignClassTeacherModel::create([
-                    'school_id'  => $schoolId,                 // ⬅️ ensure school_id
+                    'school_id'  => $schoolId,
                     'class_id'   => (int) $request->class_id,
                     'teacher_id' => (int) $tid,
                     'status'     => (int) $request->status,
@@ -245,14 +296,14 @@ public function download(Request $request)
 
         $data['getClass'] = ClassModel::query()
             ->select('id','name')
-            ->where('school_id', $schoolId)          // ⬅️ scope
+            ->where('school_id', $schoolId)
             ->orderBy('name')
             ->get();
 
         $data['getTeachers'] = User::query()
             ->select('id','name','email')
             ->where('role', 'teacher')
-            ->where('school_id', $schoolId)          // ⬅️ scope
+            ->where('school_id', $schoolId)
             ->orderBy('name')
             ->get();
 
@@ -275,14 +326,14 @@ public function download(Request $request)
 
         $data['getClass'] = ClassModel::query()
             ->select('id','name')
-            ->where('school_id', $schoolId)          // ⬅️ scope
+            ->where('school_id', $schoolId)
             ->orderBy('name')
             ->get();
 
         $data['getTeachers'] = User::query()
             ->select('id','name','email')
             ->where('role','teacher')
-            ->where('school_id', $schoolId)          // ⬅️ scope
+            ->where('school_id', $schoolId)
             ->orderBy('name')
             ->get();
 
@@ -349,18 +400,14 @@ public function download(Request $request)
                     ->first();
 
                 if ($existing) {
-                    if ($existing->trashed()) {
-                        $existing->restore();
-                    }
-                    if (!$existing->school_id) {
-                        $existing->school_id = $schoolId; // ⬅️ safeguard
-                    }
+                    if ($existing->trashed()) $existing->restore();
+                    if (!$existing->school_id) $existing->school_id = $schoolId;
                     $existing->status     = $status;
                     $existing->created_by = $existing->created_by ?? Auth::id();
                     $existing->save();
                 } else {
                     AssignClassTeacherModel::create([
-                        'school_id'  => $schoolId,  // ⬅️ ensure school_id
+                        'school_id'  => $schoolId,
                         'class_id'   => $classId,
                         'teacher_id' => $tid,
                         'status'     => $status,
