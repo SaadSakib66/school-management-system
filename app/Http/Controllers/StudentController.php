@@ -357,7 +357,7 @@ public function download($id)
 
     $data = [
         'user'         => $student,
-        'parent'       => $parent,       // may be null → your Blade already handles “N/A”
+        'parent'       => $parent,       
         'studentPhoto' => $studentPhoto,
         'parentPhoto'  => $parentPhoto,
     ];
