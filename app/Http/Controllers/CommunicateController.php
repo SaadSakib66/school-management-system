@@ -13,6 +13,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Mpdf\Mpdf;
+use Mpdf\Config\ConfigVariables;
+use Mpdf\Config\FontVariables;
+use Mpdf\Output\Destination;
 
 class CommunicateController extends Controller
 {
@@ -49,18 +53,53 @@ class CommunicateController extends Controller
     }
 
 
-    public function downloadNotice($id)
-    {
-        $notice = \App\Models\Notice::with('creator:id,name,email')->findOrFail((int)$id);
+    // public function downloadNotice($id)
+    // {
+    //     $notice = \App\Models\Notice::with('creator:id,name,email')->findOrFail((int)$id);
 
-        $file = 'Notice-'.\Illuminate\Support\Str::slug($notice->title).'-'.$notice->id.'.pdf';
+    //     $file = 'Notice-'.\Illuminate\Support\Str::slug($notice->title).'-'.$notice->id.'.pdf';
 
-        $pdf = Pdf::loadView('pdf.notice', ['notice' => $notice])
-                ->setPaper('A4');
+    //     $pdf = Pdf::loadView('pdf.notice', ['notice' => $notice])
+    //             ->setPaper('A4');
 
-        // 👇 Inline (preview) instead of attachment download
-        return $pdf->stream($file, ['Attachment' => false]);
+
+    //     return $pdf->stream($file, ['Attachment' => false]);
+    // }
+
+public function downloadNotice($id)
+{
+    $notice = \App\Models\Notice::with('creator:id,name,email')->findOrFail((int)$id);
+    $file   = 'Notice-'.\Illuminate\Support\Str::slug($notice->title).'-'.$notice->id.'.pdf';
+
+    // v6 uses the global class name \mPDF (no namespace)
+    $mpdf = new Mpdf([
+        'mode' => 'utf-8',
+        'format' => 'A4'
+    ]);
+
+    // Try to use your Bangla font (v6 API is limited)
+    $fontDir = public_path('fonts');
+    if (is_dir($fontDir)) {
+        // Let mPDF scan an extra font directory
+        if (method_exists($mpdf, 'AddFontDirectory')) {
+            $mpdf->AddFontDirectory($fontDir);
+        }
+        // Register font data if supported by your v6 build
+        if (property_exists($mpdf, 'fontdata')) {
+            $mpdf->fontdata['solaiman'] = ['R' => 'SolaimanLipi.ttf'];
+            $mpdf->default_font = 'solaiman';
+        }
     }
+
+    $html = view('pdf.notice', compact('notice'))->render();
+    $mpdf->WriteHTML($html);
+
+    return response($mpdf->Output($file, 'S'), 200, [
+        'Content-Type'        => 'application/pdf',
+        'Content-Disposition' => 'inline; filename="'.$file.'"',
+    ]);
+}
+
 
     public function AddNoticeBoard()
     {
