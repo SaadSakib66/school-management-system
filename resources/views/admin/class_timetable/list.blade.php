@@ -38,7 +38,7 @@
                 <div class="col-md-4">
                   <label class="form-label">Subject Name</label>
                   <select name="subject_id" id="subject_id" class="form-select">
-                    <option value="">Select Subject</option>
+                    <option value="">All Subject</option>
                     @foreach($getSubject as $s)
                       <option value="{{ $s->id }}" {{ $selectedSubjectId == $s->id ? 'selected' : '' }}>
                         {{ $s->name }}
@@ -144,7 +144,7 @@
     subjectSel.innerHTML = '<option value="">Loading...</option>';
 
     if (!classId) {
-      subjectSel.innerHTML = '<option value="">Select Subject</option>';
+      subjectSel.innerHTML = '<option value="">All Subject</option>';
       return;
     }
 
@@ -175,7 +175,7 @@
       }
 
       const data = await res.json();
-      subjectSel.innerHTML = '<option value="">Select Subject</option>';
+      subjectSel.innerHTML = '<option value="">All Subject</option>';
       data.forEach(s => {
         const opt = document.createElement('option');
         opt.value = s.id;
