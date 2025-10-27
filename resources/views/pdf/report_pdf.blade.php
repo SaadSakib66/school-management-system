@@ -106,7 +106,7 @@
               <td>{{ optional($submittedDate)->format('d-m-Y') }}</td>
             </tr>
           @empty
-            <tr><td colspan="10" style="text-align:center;">No data</td></tr>
+            <tr><td colspan="10" style="text-align:center;">No data Found</td></tr>
           @endforelse
         </tbody>
       </table>
