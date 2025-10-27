@@ -190,7 +190,7 @@ class CommunicateController extends Controller
     }
 
     /* =========================
-     * SEND EMAIL (ADMIN)
+     * SEND EMAIL (ADMIN) test
      * ========================= */
     public function emailForm()
     {
