@@ -137,13 +137,11 @@
                       <td>{{ optional($notice->created_at)->format('d-m-Y') }}</td>
 
                       <td class="text-end">
-                        {{-- Download PDF button --}}
-                        <a href="{{ route('admin.notice-board.download', ['id' => $notice->id, 'slug' => \Illuminate\Support\Str::slug($notice->title)]) }}"
-                           target="_blank" rel="noopener"
-                           class="btn btn-outline-danger btn-sm" title="Download PDF">
-                          <i class="bi bi-file-earmark-pdf-fill"></i>
+
+                        <a class="btn btn-sm btn-outline-primary" href="{{ route('admin.notice-board.print', $notice->id) }}" target="_blank" rel="noopener">
+                            Print / PDF
                         </a>
-                        
+
                         <a href="{{ route('admin.notice-board.edit', $notice->id) }}"
                            class="btn btn-success btn-sm">
                           Edit

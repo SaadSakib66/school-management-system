@@ -17,9 +17,11 @@ use Mpdf\Mpdf;
 use Mpdf\Config\ConfigVariables;
 use Mpdf\Config\FontVariables;
 use Mpdf\Output\Destination;
+use App\Support\Concerns\BuildsSchoolHeader;
 
 class CommunicateController extends Controller
 {
+    use BuildsSchoolHeader;
     /* =========================
      * NOTICE BOARD (ADMIN)
      * ========================= */
@@ -64,6 +66,20 @@ class CommunicateController extends Controller
 
 
         return $pdf->stream($file, ['Attachment' => false]);
+    }
+
+    public function printNotice($id, Request $request)
+    {
+        $notice = Notice::with('creator:id,name,last_name,email')->findOrFail((int) $id);
+
+        // Pull header data (logo, name, address, website, EIIN, etc.)
+        $header = $this->schoolHeaderData();
+
+        // Pass everything to the blade
+        return view('pdf.notice', [
+            'header_title' => 'Print Notice',
+            'notice'       => $notice,
+        ] + $header);
     }
 
 

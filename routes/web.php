@@ -242,6 +242,7 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::delete('notice_board/{id}',         [CommunicateController::class, 'DestroyNoticeBoard'])->name('admin.notice-board.destroy');
     // NEW: download route (slug is optional, just for pretty URL)
     Route::get('notice-board/{id}/{slug?}/download', [CommunicateController::class, 'downloadNotice'])->whereNumber('id')->name('admin.notice-board.download');
+    Route::get('notice-board/{id}/print', [CommunicateController::class, 'printNotice'])->name('admin.notice-board.print');
 
     // Email
     Route::get('send-email',               [CommunicateController::class, 'emailForm'])->name('admin.email.form');
