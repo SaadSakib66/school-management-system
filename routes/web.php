@@ -269,7 +269,7 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::get('homework_report',                                            [HomeworkReportController::class, 'index'])->name('admin.homework.report');
     Route::get('homework_report/homework/{homework}/download',              [HomeworkReportController::class, 'downloadHomework'])->name('admin.homework.report.download.homework');
     Route::get('homework_report/submission/{submission}/download',          [HomeworkReportController::class, 'downloadSubmission'])->name('admin.homework.report.download.submission');
-
+    Route::get('homework_report/pdf',                                       [HomeworkReportController::class, 'downloadPdf'])->name('admin.homework.report.pdf');
 
     Route::prefix('fees')->name('admin.fees.')->group(function () {
         // Fee Structure
