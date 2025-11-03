@@ -21,13 +21,13 @@
           <div class="card card-primary card-outline mb-4">
             <div class="card-header"><h3 class="card-title">Search Attendance Report</h3></div>
             <div class="card-body">
-              {{-- Keep everything on one line on large screens; wrap gracefully on smaller --}}
               <form id="attendanceFilterForm" method="GET" action="{{ route('admin.attendance-report.view') }}" class="row row-cols-lg-auto g-3 align-items-end">
 
                 <div class="col">
                   <label class="form-label mb-1">Class</label>
-                  <select name="class_id" class="form-select minw-220">
+                  <select name="class_id" class="form-select minw-220" id="classPicker">
                     <option value="">Select Class</option>
+                    <option value="all" {{ ($selectedClassId ?? null) === 'all' ? 'selected' : '' }}>All Classes</option>
                     @foreach($classes as $c)
                       <option value="{{ $c->id }}" {{ ($selectedClassId ?? null) == $c->id ? 'selected' : '' }}>
                         {{ $c->name }}
@@ -52,7 +52,6 @@
                   <label class="form-label mb-1">To</label>
                   <input type="date" name="date_to" class="form-control"
                          value="{{ $dateTo ?? '' }}" max="{{ $today }}">
-                  {{-- <div class="form-text">Use either Single Date or From–To.</div> --}}
                 </div>
 
                 <div class="col">
@@ -68,7 +67,7 @@
 
                 <div class="col">
                   <label class="form-label mb-1">Student (optional)</label>
-                  <select name="student_id" class="form-select minw-220">
+                  <select name="student_id" id="studentPicker" class="form-select minw-220" {{ ($selectedClassId ?? null) === 'all' ? 'disabled' : '' }}>
                     <option value="">All Students</option>
                     @foreach(($students ?? collect()) as $stu)
                       <option value="{{ $stu->id }}" {{ ($selectedStudent ?? null) == $stu->id ? 'selected' : '' }}>
@@ -88,8 +87,8 @@
             </div>
           </div>
 
-          {{-- Results --}}
-          @if(($selectedClassId ?? null) && (($selectedDate ?? null) || (($dateFrom ?? null) && ($dateTo ?? null))))
+          {{-- Results (only for a single class selection) --}}
+          @if(($selectedClassId ?? null) && ($selectedClassId !== 'all') && (($selectedDate ?? null) || (($dateFrom ?? null) && ($dateTo ?? null))))
             <div class="card">
               <div class="card-header">
                 <h3 class="card-title">Results</h3>
@@ -149,9 +148,15 @@
                 @endif
               </div>
             </div>
+
+          @elseif(($selectedClassId ?? null) === 'all' && (($selectedDate ?? null) || (($dateFrom ?? null) && ($dateTo ?? null))))
+            <div class="alert alert-info">
+              You selected <strong>All Classes</strong>. Click <strong>Download</strong> to get the combined PDF. (Preview table is not shown for all classes.)
+            </div>
+
           @elseif(request()->has('class_id') || request()->has('attendance_date') || request()->has('date_from') || request()->has('date_to') || request()->has('attendance_type') || request()->has('student_id'))
             <div class="alert alert-info">
-              Please select <strong>Class</strong> and either a <strong>Single Date</strong> or a valid <strong>From–To</strong> range, then click <strong>Search</strong>.
+              Please select <strong>Class</strong> (or <strong>All Classes</strong>) and either a <strong>Single Date</strong> or a valid <strong>From–To</strong> range, then click <strong>Search</strong>.
             </div>
           @endif
 
@@ -171,18 +176,33 @@
 @push('scripts')
 <script>
 (function(){
-  const form = document.getElementById('attendanceFilterForm');
-  const btn  = document.getElementById('btnDownload');
+  const form          = document.getElementById('attendanceFilterForm');
+  const btnDownload   = document.getElementById('btnDownload');
+  const classPicker   = document.getElementById('classPicker');
+  const studentPicker = document.getElementById('studentPicker');
+  const studentHint   = document.getElementById('studentHint');
 
-  if(btn && form){
-    btn.addEventListener('click', function(){
+  function syncStudentState(){
+    if (!classPicker) return;
+    const all = classPicker.value === 'all';
+    if (studentPicker) studentPicker.disabled = all;
+    if (studentHint)   studentHint.style.display = all ? '' : 'none';
+    if (all && studentPicker) studentPicker.value = ''; // clear if switching to all
+  }
+  if (classPicker) {
+    classPicker.addEventListener('change', syncStudentState);
+    syncStudentState();
+  }
+
+  if(btnDownload && form){
+    btnDownload.addEventListener('click', function(){
       const cls = form.querySelector('[name=class_id]')?.value;
       const d   = form.querySelector('[name=attendance_date]')?.value;
       const df  = form.querySelector('[name=date_from]')?.value;
       const dt  = form.querySelector('[name=date_to]')?.value;
 
       if(!cls){
-        alert('Please select a Class first.');
+        alert('Please select a Class (or All Classes) first.');
         return;
       }
       if(!d && !(df && dt)){
