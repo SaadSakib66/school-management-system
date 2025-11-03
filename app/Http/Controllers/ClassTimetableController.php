@@ -111,27 +111,43 @@ class ClassTimetableController extends Controller
 
     /**
      * AJAX: subjects assigned to a class (active only).
-     * Route param name uses {class_id} (not {class}).
+     * If class_id === "all", return all ACTIVE subjects across ACTIVE classes of the current school.
      */
     public function subjectsForClass($class_id)
     {
-        // Handle super_admin without a selected school cleanly
+        // Super admin must pick a school
         $user = Auth::user();
-        if ($user && $user->role === 'super_admin') {
-            $currentSchoolId = (int) session('current_school_id');
-            if (! $currentSchoolId) {
-                return response()->json([
-                    'message' => 'Please select a school first.'
-                ], 409);
-            }
+        if ($user && $user->role === 'super_admin' && ! session('current_school_id')) {
+            return response()->json(['message' => 'Please select a school first.'], 409);
         }
 
-        // If class is not visible in current school scope, return a clear 404 JSON
+        // When "All Classes" is selected, we need all active subjects in this school.
+        if ($class_id === 'all') {
+            // class list is already school-scoped by global scopes; still restrict & only active
+            $classIds = ClassModel::query()->where('status', 1)->pluck('id'); // current school
+            if ($classIds->isEmpty()) return response()->json([], 200);
+
+            $subjectIds = ClassSubject::query()
+                ->whereIn('class_id', $classIds)
+                ->where('status', 1)
+                ->pluck('subject_id')
+                ->unique()
+                ->values();
+
+            if ($subjectIds->isEmpty()) return response()->json([], 200);
+
+            $subjects = Subject::query()
+                ->whereIn('id', $subjectIds)
+                ->orderBy('name')
+                ->get(['id','name']);
+
+            return response()->json($subjects, 200);
+        }
+
+        // Normal single-class flow
         $class = ClassModel::find((int) $class_id);
         if (! $class) {
-            return response()->json([
-                'message' => 'Class not found or not accessible in the current school.'
-            ], 404);
+            return response()->json(['message' => 'Class not found or not accessible in the current school.'], 404);
         }
 
         $subjects = ClassSubject::subjectsForClass($class->id);
@@ -145,26 +161,42 @@ class ClassTimetableController extends Controller
     {
         $data['header_title'] = 'Class Timetable';
 
-        // Classes are already school-scoped via global scope
+        // Classes (school-scoped)
         $data['getClass'] = ClassModel::orderBy('name')->get(['id','name']);
 
-        $selectedClassId   = (int) $request->get('class_id');
-        $selectedSubjectId = (int) $request->get('subject_id');
+        // Keep the raw, so we can support "all"
+        $selectedClassRaw   = $request->get('class_id');
+        $selectedSubjectId  = $request->filled('subject_id') ? (int) $request->get('subject_id') : null;
 
-        // Subjects dropdown (only when a valid class from current school is chosen)
-        $data['getSubject'] = collect();
-        if ($selectedClassId) {
-            $class = ClassModel::findOrFail($selectedClassId);
-            $data['getSubject'] = ClassSubject::subjectsForClass($class->id);
+        $selectedClassId = null;
+        if ($selectedClassRaw === 'all') {
+            $selectedClassId = 'all';
+        } elseif (is_numeric($selectedClassRaw)) {
+            $selectedClassId = (int) $selectedClassRaw;
         }
 
-        $data['selectedClassId']   = $selectedClassId ?: null;
+        // Build the Subject dropdown options
+        if ($selectedClassId === 'all') {
+            $classIds = ClassModel::query()->where('status', 1)->pluck('id');
+            $subjectIds = ClassSubject::query()
+                ->whereIn('class_id', $classIds)
+                ->where('status', 1)
+                ->pluck('subject_id')->unique();
+            $data['getSubject'] = Subject::whereIn('id', $subjectIds)->orderBy('name')->get(['id','name']);
+        } elseif (is_int($selectedClassId)) {
+            $class = ClassModel::findOrFail($selectedClassId);
+            $data['getSubject'] = ClassSubject::subjectsForClass($class->id);
+        } else {
+            $data['getSubject'] = collect();
+        }
+
+        $data['selectedClassId']   = $selectedClassId;
         $data['selectedSubjectId'] = $selectedSubjectId ?: null;
         $data['weeks']             = Week::orderBy('sort')->get(['id','name','sort']);
 
-        // Existing rows keyed by week_id (only when both selected & visible)
+        // Only show editable grid when a single class AND a subject are chosen
         $data['existing'] = collect();
-        if ($selectedClassId && $selectedSubjectId) {
+        if (is_int($selectedClassId) && $selectedSubjectId) {
             ClassModel::findOrFail($selectedClassId);
             Subject::findOrFail($selectedSubjectId);
 
@@ -293,10 +325,8 @@ class ClassTimetableController extends Controller
         $user = Auth::user();
         abort_unless($user && $user->role === 'teacher', 403);
 
-        // Scope to the teacher's school (teacher routes won't hit super_admin context)
         $schoolId = $user->school_id ?: null;
 
-        // Pull only ACTIVE assignments and ACTIVE classes for this teacher
         $classes = AssignClassTeacherModel::classesForTeacher(
             teacherId: $user->id,
             schoolId:  $schoolId,
@@ -343,8 +373,6 @@ class ClassTimetableController extends Controller
     /**
      * Parent: view a selected child’s timetable (with PDF branch).
      */
-//  public function parentTimetable(Request $request) { /* old commented version kept intentionally */ }
-
     public function parentTimetable(Request $request)
     {
         $parent = Auth::user();
@@ -354,7 +382,7 @@ class ClassTimetableController extends Controller
             ->where('role', 'student')
             ->where('parent_id', $parent->id)
             ->orderBy('name')
-            ->get(); // SoftDeletes global scope already filters deleted_at
+            ->get();
 
         $selectedStudentId = null;
         if ($students->count() === 1) {
@@ -396,17 +424,11 @@ class ClassTimetableController extends Controller
             }
         }
 
-        /* ---------- PDF Download branch ---------- */
+        // PDF branch
         if ($request->boolean('download')) {
-            if (! $selectedStudent) {
-                return back()->with('error', 'Please select a student first.');
-            }
-            if (! $class) {
-                return back()->with('error', 'Selected student is not assigned to any class.');
-            }
-            if ($rows->isEmpty()) {
-                return back()->with('error', 'No timetable entries found for this class.');
-            }
+            if (! $selectedStudent) return back()->with('error', 'Please select a student first.');
+            if (! $class)          return back()->with('error', 'Selected student is not assigned to any class.');
+            if ($rows->isEmpty())  return back()->with('error', 'No timetable entries found for this class.');
 
             $data = [
                 'title'        => 'Class Routine',
@@ -416,15 +438,14 @@ class ClassTimetableController extends Controller
                 'rows'         => $rows,
                 'byWeek'       => $byWeek,
                 'generated_at' => now(),
-            ] + $this->schoolHeaderData(); // 🔹 add header data
+            ] + $this->schoolHeaderData();
 
             $filename = 'Class-Routine_'.str_replace(' ', '-', trim($selectedStudent->name.' '.$selectedStudent->last_name)).'_'.($class->name ?? 'Class').'.pdf';
 
             return PDF::loadView('pdf.parent_class_schedule', $data)
                 ->setPaper('a4', 'portrait')
-                ->stream($filename); // inline preview instead of download
+                ->stream($filename);
         }
-        /* ---------- /PDF Download branch ---------- */
 
         return view('parent.my_timetable', [
             'header_title'      => 'My Child’s Timetable',
@@ -439,70 +460,135 @@ class ClassTimetableController extends Controller
 
     /**
      * Admin: download class schedule PDF (with header).
+     * Supports single class OR "all" classes, and optional subject filter.
+     * Uses 12-hour time labels and compacts rows per-class to fit one page.
      */
     public function download(Request $request)
     {
+        // class_id can be numeric or the string "all"
         $request->validate([
-            'class_id'   => ['required','integer'],
+            'class_id'   => ['required'],
             'subject_id' => ['nullable','integer'],
         ]);
 
-        $classId   = (int) $request->class_id;
         $subjectId = $request->filled('subject_id') ? (int) $request->subject_id : null;
+        $subject   = $subjectId ? Subject::select('id','name')->findOrFail($subjectId) : null;
 
-        $class   = ClassModel::select('id','name','school_id')->findOrFail($classId);
-        $subject = $subjectId ? Subject::select('id','name')->findOrFail($subjectId) : null;
-
-        $weeks = Week::orderBy('sort')->get(['id','name','sort']);
+        // Weeks shared for all pages
+        $weeks   = Week::orderBy('sort')->get(['id','name','sort']);
         $weekIds = $weeks->pluck('id')->all();
 
-        // Build hourly slots (07:00–19:00)
-        $slots = [];
-        for ($h = 7; $h < 19; $h++) {
-            $key = str_pad($h, 2, '0', STR_PAD_LEFT) . ':00';
-            $slots[$key] = sprintf('%02d:00-%02d:00', $h, $h+1);
-        }
+        // helper: format 'H:i' or 'H:i:s' to 'h:i A'
+        $fmt = function (?string $t) {
+            if (!$t) return '';
+            try { return \Carbon\Carbon::createFromFormat('H:i:s', $t)->format('h:i A'); }
+            catch (\Exception $e) {
+                try { return \Carbon\Carbon::createFromFormat('H:i', $t)->format('h:i A'); }
+                catch (\Exception $e2) { return $t; }
+            }
+        };
 
-        // Fetch rows (only active assignments)
-        $q = ClassTimetable::with(['subject:id,name'])
-            ->join('class_subjects as cs', function ($j) use ($classId) {
-                $j->on('cs.subject_id', '=', 'class_timetables.subject_id')
-                  ->where('cs.class_id', $classId)
-                  ->where('cs.status', 1)
-                  ->whereNull('cs.deleted_at');
-            })
-            ->where('class_timetables.class_id', $classId);
-        if ($subject) $q->where('class_timetables.subject_id', $subject->id);
+        // Build one class page
+        $buildPage = function (ClassModel $class) use ($subjectId, $subject, $weeks, $weekIds, $fmt) {
+            $q = ClassTimetable::with(['subject:id,name'])
+                ->join('class_subjects as cs', function ($j) use ($class) {
+                    $j->on('cs.subject_id', '=', 'class_timetables.subject_id')
+                      ->where('cs.class_id', $class->id)
+                      ->where('cs.status', 1)
+                      ->whereNull('cs.deleted_at');
+                })
+                ->where('class_timetables.class_id', $class->id);
 
-        $rows = $q->select('class_timetables.*')->get();
+            if ($subjectId) $q->where('class_timetables.subject_id', $subjectId);
 
-        // Matrix: [slotKey][week_id] = string
-        $grid = [];
-        foreach ($slots as $k => $label) $grid[$k] = array_fill_keys($weekIds, '');
-        foreach ($rows as $r) {
-            if (!$r->start_time || !$r->end_time) continue;
-            $slotKey = substr($r->start_time, 0, 2) . ':00'; // floor to hour
-            if (!isset($grid[$slotKey])) continue;
-            $txt = ($r->subject->name ?? 'N/A') . "\n"
-                 . substr($r->start_time,0,5) . ' - ' . substr($r->end_time,0,5);
-            if ($r->room_number) $txt .= "\nRoom: ".$r->room_number;
-            $wk = (int)$r->week_id;
-            $grid[$slotKey][$wk] = trim($grid[$slotKey][$wk] . ($grid[$slotKey][$wk] ? "\n" : "") . $txt);
-        }
+            $rows = $q->select('class_timetables.*')->get();
 
-        $params = [
-            'class'     => $class,
-            'subject'   => $subject,
-            'weeks'     => $weeks,
-            'slots'     => $slots,
-            'grid'      => $grid,
-            'title'     => $subject ? "Class Schedule - {$class->name} ({$subject->name})"
-                                    : "Class Schedule - {$class->name}",
+            // figure out min/max hour actually used
+            $minH = 24; $maxH = 0;
+            foreach ($rows as $r) {
+                if ($r->start_time) $minH = min($minH, (int) substr($r->start_time, 0, 2));
+                if ($r->end_time)   $maxH = max($maxH,   (int) substr($r->end_time,   0, 2));
+            }
+            if ($minH === 24) { $minH = 7; $maxH = 17; }
+            $minH = max(7,  $minH);
+            $maxH = min(19, max($maxH, $minH + 1));
+
+            // slots with 12-hour labels
+            $slots = [];
+            for ($h = $minH; $h < $maxH; $h++) {
+                $key   = sprintf('%02d:00', $h);
+                $label = \Carbon\Carbon::createFromTime($h, 0)->format('h:00 A') . ' - ' .
+                         \Carbon\Carbon::createFromTime($h + 1, 0)->format('h:00 A');
+                $slots[$key] = $label;
+            }
+
+            // grid
+            $grid = [];
+            foreach ($slots as $k => $label) $grid[$k] = array_fill_keys($weekIds, '');
+
+            foreach ($rows as $r) {
+                if (!$r->start_time || !$r->end_time) continue;
+                $slotKey = substr($r->start_time, 0, 2) . ':00';
+                if (!isset($grid[$slotKey])) continue;
+
+                $txt = ($r->subject->name ?? 'N/A') . "\n"
+                     . $fmt($r->start_time) . ' - ' . $fmt($r->end_time);
+                if ($r->room_number) $txt .= "\nRoom: ".$r->room_number;
+
+                $wk = (int)$r->week_id;
+                $grid[$slotKey][$wk] = trim($grid[$slotKey][$wk] . ($grid[$slotKey][$wk] ? "\n" : "") . $txt);
+            }
+
+            return [
+                'class'   => $class,
+                'subject' => $subject,
+                'weeks'   => $weeks,
+                'slots'   => $slots,
+                'grid'    => $grid,
+                'title'   => $subject
+                    ? "Class Schedule - {$class->name} ({$subject->name})"
+                    : "Class Schedule - {$class->name}",
+            ];
+        };
+
+        $header = [
             'generated' => now()->format('d M Y g:i A'),
-        ] + $this->schoolHeaderData(); // 🔹 add header data
+        ] + $this->schoolHeaderData();
 
-        $pdf = PDF::loadView('pdf.class_schedule', $params)
-            ->setPaper('a4', 'landscape');
+        if ($request->class_id === 'all') {
+            $schoolId = $this->currentSchoolId();
+            $classesQ = ClassModel::query()
+                ->select('id','name','school_id')
+                ->where('status', 1)
+                ->orderBy('name');
+            if ($schoolId) $classesQ->where('school_id', $schoolId);
+
+            $classes = $classesQ->get();
+            if ($classes->isEmpty()) {
+                return back()->with('error', 'No active classes found for generating schedule.');
+            }
+
+            $pages = [];
+            foreach ($classes as $c) $pages[] = $buildPage($c);
+
+            $params = ['pages' => $pages] + $header;
+
+            $file = $subject
+                ? "Class_Schedule_All_Classes_{$subject->name}.pdf"
+                : "Class_Schedule_All_Classes.pdf";
+
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.class_schedule', $params)->setPaper('a4', 'landscape');
+            return $pdf->stream($file, ['Attachment' => false]);
+        }
+
+        // single class
+        $classId = (int) $request->class_id;
+        $class   = ClassModel::select('id','name','school_id')->findOrFail($classId);
+
+        $page = $buildPage($class);
+        $params = $page + ['generated' => $header['generated']] + $this->schoolHeaderData();
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.class_schedule', $params)->setPaper('a4', 'landscape');
 
         $file = $subject
             ? "Class_Schedule_{$class->name}_{$subject->name}.pdf"
@@ -521,13 +607,12 @@ class ClassTimetableController extends Controller
 
         $request->validate([
             'class_id'   => ['required','integer'],
-            'subject_id' => ['nullable','integer'], // optional
+            'subject_id' => ['nullable','integer'],
         ]);
 
         $classId   = (int) $request->class_id;
         $subjectId = $request->filled('subject_id') ? (int) $request->subject_id : null;
 
-        // Ensure class is under this teacher (active assignment & class)
         $allowedClasses = AssignClassTeacherModel::classesForTeacher(
             teacherId: $user->id,
             schoolId:  $user->school_id,
@@ -542,14 +627,12 @@ class ClassTimetableController extends Controller
         $weeks = Week::orderBy('sort')->get(['id','name','sort']);
         $weekIds = $weeks->pluck('id')->all();
 
-        // Slots (07:00–19:00)
         $slots = [];
         for ($h = 7; $h < 19; $h++) {
             $key = sprintf('%02d:00', $h);
             $slots[$key] = sprintf('%02d:00-%02d:00', $h, $h+1);
         }
 
-        // Fetch rows (require class_subjects active link)
         $q = ClassTimetable::with(['subject:id,name'])
             ->join('class_subjects as cs', function ($j) use ($classId) {
                 $j->on('cs.subject_id', '=', 'class_timetables.subject_id')
@@ -559,13 +642,10 @@ class ClassTimetableController extends Controller
             })
             ->where('class_timetables.class_id', $classId);
 
-        if ($subject) {
-            $q->where('class_timetables.subject_id', $subject->id);
-        }
+        if ($subject) $q->where('class_timetables.subject_id', $subject->id);
 
         $rows = $q->select('class_timetables.*')->get();
 
-        // Build grid
         $grid = [];
         foreach ($slots as $k => $label) $grid[$k] = array_fill_keys($weekIds, '');
         foreach ($rows as $r) {
@@ -586,14 +666,11 @@ class ClassTimetableController extends Controller
             'weeks'     => $weeks,
             'slots'     => $slots,
             'grid'      => $grid,
-            'title'     => $subject
-                            ? "Class Schedule - {$class->name} ({$subject->name})"
-                            : "Class Schedule - {$class->name}",
+            'title'     => $subject ? "Class Schedule - {$class->name} ({$subject->name})" : "Class Schedule - {$class->name}",
             'generated' => now()->format('d M Y g:i A') . ' — Teacher Copy',
-        ] + $this->schoolHeaderData(); // 🔹 add header data
+        ] + $this->schoolHeaderData();
 
-        $pdf = PDF::loadView('pdf.class_schedule', $params)
-            ->setPaper('a4', 'landscape');
+        $pdf = PDF::loadView('pdf.class_schedule', $params)->setPaper('a4', 'landscape');
 
         $file = $subject
             ? "Class_Schedule_{$class->name}_{$subject->name}.pdf"

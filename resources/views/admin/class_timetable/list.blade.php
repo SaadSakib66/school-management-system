@@ -27,8 +27,9 @@
                   <label class="form-label">Class Name</label>
                   <select name="class_id" id="class_id" class="form-select">
                     <option value="">Select Class</option>
+                    <option value="all" @selected(request('class_id')==='all')>All Classes</option>
                     @foreach($getClass as $c)
-                      <option value="{{ $c->id }}" {{ $selectedClassId == $c->id ? 'selected' : '' }}>
+                      <option value="{{ $c->id }}" {{ $selectedClassId === $c->id ? 'selected' : '' }}>
                         {{ $c->name }}
                       </option>
                     @endforeach
@@ -48,12 +49,10 @@
                 </div>
 
                 <div class="col-md-4 d-flex gap-2 align-items-end">
-                  {{-- regular search (submits to list route) --}}
                   <button type="submit" class="btn btn-primary">Search</button>
-
                   <a href="{{ route('admin.class-timetable.list') }}" class="btn btn-success">Reset</a>
 
-                  {{-- Class Schedule Download: submits current class/subject to download route --}}
+                  {{-- Class Schedule Download --}}
                   <button type="submit"
                           class="btn btn-danger"
                           formaction="{{ route('admin.class-timetable.download') }}"
@@ -66,8 +65,8 @@
             </div>
           </div>
 
-          {{-- Timetable --}}
-          @if($selectedClassId && $selectedSubjectId)
+          {{-- Timetable editor only for single class + subject --}}
+          @if(is_int($selectedClassId) && $selectedSubjectId)
             <div class="card mb-4">
               <div class="card-header">
                 <h3 class="card-title">Class Timetable</h3>
@@ -117,9 +116,9 @@
               </div>
             </div>
           @elseif(request()->has('class_id') || request()->has('subject_id'))
-            {{-- Optional gentle hint after a Search with only one filter set --}}
             <div class="alert alert-info">
-              Select both a Class and a Subject, then click <strong>Search</strong> to view/edit the timetable.
+              Select both a <strong>Class</strong> and a <strong>Subject</strong>, then click <strong>Search</strong> to view/edit.
+              (Editing is only available for a single class — not "All Classes".)
             </div>
           @endif
 
@@ -129,7 +128,6 @@
   </div>
 </main>
 
-{{-- Simple AJAX to reload subjects when class changes --}}
 @push('scripts')
 <script>
 (function () {
@@ -154,13 +152,12 @@
       const res = await fetch(url, {
         headers: {
           'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest' // helps Laravel return JSON on auth errors
+          'X-Requested-With': 'XMLHttpRequest'
         },
         credentials: 'same-origin'
       });
 
       if (!res.ok) {
-        // Attempt to read JSON error message, fallback to text
         let msg = 'Failed to load';
         try {
           const data = await res.json();

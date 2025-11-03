@@ -190,12 +190,18 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
     Route::post('update_account',[UserController::class, 'updateMyAccountAdmin'])->name('admin.update-account');
 
     // Class Timetable
-    Route::get('class_timetable/list',     [ClassTimetableController::class, 'list'])->name('admin.class-timetable.list');
-    Route::post('class_timetable/save',    [ClassTimetableController::class,'save'])->name('admin.class-timetable.save');
-    // use {class_id} instead of {class}
-    Route::get('class_timetable/subjects/{class_id}', [ClassTimetableController::class, 'subjectsForClass'])->name('admin.class-timetable.subjects');
-    // NEW: PDF download
+    Route::get('class_timetable/list',   [ClassTimetableController::class, 'list'])->name('admin.class-timetable.list');
+    Route::post('class_timetable/save',  [ClassTimetableController::class,'save'])->name('admin.class-timetable.save');
+
+    // Allow digits OR the literal string "all" for the subjects dropdown endpoint
+    Route::get(
+        'class_timetable/subjects/{class_id}',
+        [ClassTimetableController::class, 'subjectsForClass']
+    )->where('class_id', 'all|\d+')->name('admin.class-timetable.subjects');
+
+    // PDF download
     Route::get('class_timetable/download', [ClassTimetableController::class, 'download'])->name('admin.class-timetable.download');
+
 
     // Exams
     Route::get('exam/list',                [ExamController::class, 'list'])->name('admin.exam.list');
