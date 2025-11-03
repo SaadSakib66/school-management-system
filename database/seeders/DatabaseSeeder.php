@@ -16,7 +16,10 @@ class DatabaseSeeder extends Seeder
         // User::factory(10)->create();
 
         $this->call([
+            SuperAdminSeeder::class,
             UsersTableSeeder::class,
+            WeekSeeder::class,
+            SchoolBackfillSeeder::class,
         ]);
         // $this->call([
         //     WeekSeeder::class,
