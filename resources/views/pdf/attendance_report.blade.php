@@ -5,6 +5,7 @@
   <title>Attendance Report</title>
   <style>
     @page { margin: 8px 18px 16px 18px; }
+    html, body { margin-top:10px; padding:0; }
     body{ font-family: DejaVu Sans, sans-serif; font-size:12px; }
     h1,h3{ margin:0 0 6px 0; }
     .meta{ margin-bottom:10px; }
@@ -25,10 +26,19 @@
 </head>
 <body>
 
+@php
+  // helper for consistent include usage
+  $headerVars = [
+    'schoolLogoSrc' => $schoolLogoSrc ?? null,
+    'schoolPrint'   => $schoolPrint   ?? [],
+    'school'        => $school        ?? null,
+  ];
+@endphp
+
 {{-- ========== SINGLE-CLASS MODE ========== --}}
 @if(isset($class) && isset($rows))
-  {{-- ✅ School header (keep your existing partial) --}}
-  @include('pdf.partials.school_header')
+  {{-- ✅ School header (explicit vars to avoid scope issues) --}}
+  @include('pdf.partials.school_header', $headerVars)
 
   <div class="report-header">
     <h1>Attendance Report</h1>
@@ -44,12 +54,11 @@
     @if(($filter['student'] ?? null))
       &nbsp;&nbsp;|&nbsp;&nbsp;<strong>Student:</strong>
       {{ $filter['student']->roll_number ?? $filter['student']->id }} —
-      {{ $filter['student']->name }} {{ $filter['student']->last_name }}
+      {{ trim(($filter['student']->name ?? '').' '.($filter['student']->last_name ?? '')) }}
     @endif
     &nbsp;&nbsp;|&nbsp;&nbsp;<strong>Generated:</strong> {{ $generated ?? '' }}
   </div>
 
-  {{-- Inline table (no includes/closures) --}}
   <table>
     <thead>
       <tr>
@@ -71,9 +80,9 @@
         <tr>
           <td>{{ \Carbon\Carbon::parse($r->attendance_date)->format('d-m-Y') }}</td>
           <td>{{ $r->student?->roll_number ?? $r->student_id }}</td>
-          <td>{{ $r->student?->name }} {{ $r->student?->last_name }}</td>
+          <td>{{ trim(($r->student?->name ?? '').' '.($r->student?->last_name ?? '')) }}</td>
           <td><span class="badge {{ $badge }}">{{ $label }}</span></td>
-          <td>{{ $r->creator?->name }} {{ $r->creator?->last_name }}</td>
+          <td>{{ trim(($r->creator?->name ?? '').' '.($r->creator?->last_name ?? '')) }}</td>
         </tr>
       @empty
         <tr><td colspan="5" class="text-right">No data.</td></tr>
@@ -88,8 +97,8 @@
       <div class="page-break"></div>
     @endif
 
-    {{-- ✅ School header for each class section --}}
-    @include('pdf.partials.school_header')
+    {{-- ✅ School header for each class section (explicit vars) --}}
+    @include('pdf.partials.school_header', $headerVars)
 
     <div class="report-header">
       <h1>Attendance Report</h1>
@@ -105,7 +114,6 @@
       &nbsp;&nbsp;|&nbsp;&nbsp;<strong>Generated:</strong> {{ $generated ?? '' }}
     </div>
 
-    {{-- Inline table (duplicated to keep this a single file) --}}
     <table>
       <thead>
         <tr>
@@ -127,9 +135,9 @@
           <tr>
             <td>{{ \Carbon\Carbon::parse($r->attendance_date)->format('d-m-Y') }}</td>
             <td>{{ $r->student?->roll_number ?? $r->student_id }}</td>
-            <td>{{ $r->student?->name }} {{ $r->student?->last_name }}</td>
+            <td>{{ trim(($r->student?->name ?? '').' '.($r->student?->last_name ?? '')) }}</td>
             <td><span class="badge {{ $badge }}">{{ $label }}</span></td>
-            <td>{{ $r->creator?->name }} {{ $r->creator?->last_name }}</td>
+            <td>{{ trim(($r->creator?->name ?? '').' '.($r->creator?->last_name ?? '')) }}</td>
           </tr>
         @empty
           <tr><td colspan="5" class="text-right">No data.</td></tr>

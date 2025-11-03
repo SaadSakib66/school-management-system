@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
-
+use Illuminate\Support\Facades\Storage;
 use App\Models\Attendance;
 use App\Models\ClassModel;
 use App\Models\User;
@@ -820,7 +820,7 @@ class AttendanceController extends Controller
                     'type'    => $type ? ($typeMap[$type] ?? 'All') : 'All',
                     'student' => $studentId ? User::find($studentId) : null,
                 ],
-            ];
+            ] + $this->schoolHeaderData(); // ✅ ensure header data present
 
             $fileName = 'Attendance_'
                 . preg_replace('/\s+/', '_', $class->name ?? ('Class_'.$class->id))
@@ -856,7 +856,7 @@ class AttendanceController extends Controller
             else { $q->whereBetween('attendance_date', [$dateFrom, $dateTo]); }
 
             if ($type) $q->where('attendance_type', $type);
-            // student filter is ignored for "all" (doesn’t make sense across classes)
+            // student filter is ignored for "all"
 
             $rows = $q->orderBy('attendance_date')->orderBy('student_id')->get();
             $bundles[] = ['class' => $class, 'rows' => $rows];
@@ -870,7 +870,7 @@ class AttendanceController extends Controller
             'filter'    => [
                 'type' => $type ? ($typeMap[$type] ?? 'All') : 'All',
             ],
-        ];
+        ] + $this->schoolHeaderData(); // ✅ add header data to multi-class too
 
         $labelRange = isset($rangeText['single'])
             ? ('On_'.$rangeText['single'])
@@ -887,6 +887,80 @@ class AttendanceController extends Controller
             ]);
 
         return $pdf->stream($fileName);
+    }
+
+
+    protected function schoolHeaderData(?int $forceSchoolId = null): array
+    {
+        $schoolId =
+            $forceSchoolId
+            ?? $this->currentSchoolId()
+            ?? (Auth::check() ? (int) Auth::user()->school_id : null)
+            ?? session('current_school_id')
+            ?? session('school_id');
+
+        if (!$schoolId) {
+            $fallback = \App\Models\School::query()->orderBy('id')->value('id');
+            if ($fallback) $schoolId = (int) $fallback;
+            else abort(403, 'No school context.');
+        }
+
+        /** @var \App\Models\School $school */
+        $school = \App\Models\School::findOrFail($schoolId);
+
+        // Logo -> data URI
+        $logoFile = $school->logo ?? $school->school_logo ?? $school->photo ?? null;
+        $schoolLogoSrc = null;
+
+        if ($logoFile) {
+            $normalized = ltrim(str_replace(['public/', 'storage/'], '', $logoFile), '/');
+            $candidates = [$normalized, 'schools/'.basename($normalized), 'school_logos/'.basename($normalized)];
+            foreach ($candidates as $path) {
+                if (Storage::disk('public')->exists($path)) {
+                    $bin = Storage::disk('public')->get($path);
+
+                    $mime = 'image/png';
+                    if (class_exists(\finfo::class)) {
+                        $fi  = new \finfo(FILEINFO_MIME_TYPE);
+                        $det = $fi->buffer($bin);
+                        if ($det) $mime = $det;
+                    } else {
+                        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                        $map = [
+                            'jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png',
+                            'gif'=>'image/gif','webp'=>'image/webp','bmp'=>'image/bmp','svg'=>'image/svg+xml'
+                        ];
+                        if (isset($map[$ext])) $mime = $map[$ext];
+                    }
+
+                    $schoolLogoSrc = 'data:'.$mime.';base64,'.base64_encode($bin);
+                    break;
+                }
+            }
+        }
+
+        // EIIN (DB uses eiin_num)
+        $eiin = null;
+        foreach (['eiin_num', 'eiin', 'eiin_code', 'eiin_no'] as $field) {
+            if (isset($school->{$field})) {
+                $val = trim((string) $school->{$field});
+                if ($val !== '') { $eiin = $val; break; }
+            }
+        }
+
+        $website = $school->website ?? $school->website_url ?? $school->domain ?? null;
+        if (is_string($website)) $website = trim($website);
+
+        return [
+            'school'        => $school,
+            'schoolLogoSrc' => $schoolLogoSrc,
+            'schoolPrint'   => [
+                'name'    => $school->name ?? $school->short_name ?? 'Unknown School',
+                'eiin'    => $eiin,
+                'address' => $school->address ?? $school->full_address ?? null,
+                'website' => $website,
+            ],
+        ];
     }
 
 
