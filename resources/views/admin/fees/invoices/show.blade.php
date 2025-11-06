@@ -23,14 +23,37 @@
         <div class="col-md-7">
           <div class="card card-body">
             <h5>Student: {{ $invoice->student?->name }}</h5>
+            <p>Student ID: {{ $invoice->student_id }}</p>
             <p>Class: {{ $invoice->class?->name }}</p>
             <p>Year/Month: {{ $invoice->academic_year }} / {{ str_pad($invoice->month,2,'0',STR_PAD_LEFT) }}</p>
-            <p>Amount: {{ number_format($invoice->amount - $invoice->discount + $invoice->fine,2) }}</p>
-            <p>Paid: {{ number_format($invoice->paid_amount,2) }}</p>
-            <p>Due: <strong>{{ number_format($invoice->due_amount,2) }}</strong></p>
+
+            {{-- Breakdown --}}
+            <h6 class="mt-3">Breakdown</h6>
+            <div class="table-responsive">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th class="text-end">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach($breakdown['items'] as $row)
+                    <tr>
+                      <td>{{ $row['label'] }}</td>
+                      <td class="text-end">{{ number_format($row['amount'], 2) }}</td>
+                    </tr>
+                  @endforeach
+                </tbody>
+              </table>
+            </div>
+
             <p>Status:
-              <span class="badge bg-{{ $invoice->status=='paid'?'success':($invoice->status=='partial'?'warning':'danger') }}">
-                {{ ucfirst($invoice->status) }}
+              @php
+                $status = $breakdown['due'] <= 0 ? 'paid' : ($breakdown['paid'] > 0 ? 'partial' : 'unpaid');
+              @endphp
+              <span class="badge bg-{{ $status=='paid'?'success':($status=='partial'?'warning':'danger') }}">
+                {{ ucfirst($status) }}
               </span>
             </p>
           </div>
@@ -41,7 +64,7 @@
               <table class="table">
                 <thead><tr><th>Date</th><th>Method</th><th>Ref</th><th class="text-end">Amount</th><th></th></tr></thead>
                 <tbody>
-                @foreach($invoice->payments as $p)
+                @forelse($invoice->payments as $p)
                   <tr>
                     <td>{{ $p->paid_on }}</td>
                     <td>{{ strtoupper($p->method) }}</td>
@@ -54,10 +77,9 @@
                       </form>
                     </td>
                   </tr>
-                @endforeach
-                @if($invoice->payments->isEmpty())
+                @empty
                   <tr><td colspan="5" class="text-center text-muted">No payments yet.</td></tr>
-                @endif
+                @endforelse
                 </tbody>
               </table>
             </div>
@@ -71,7 +93,7 @@
               @csrf
               <div class="mb-2">
                 <label class="form-label">Amount</label>
-                <input type="number" step="0.01" min="0.01" name="amount" value="{{ $invoice->due_amount }}" class="form-control" required>
+                <input type="number" step="0.01" min="0.01" name="amount" value="{{ $breakdown['due'] }}" class="form-control" required>
               </div>
               <div class="mb-2">
                 <label class="form-label">Paid On</label>

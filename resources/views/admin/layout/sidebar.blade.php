@@ -130,24 +130,43 @@
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
                                 <a href="{{ route('admin.fees.structures.index') }}"
-                                class="nav-link {{ request()->routeIs('admin.fees.structures.*') ? 'active' : '' }}">
+                                    class="nav-link {{ request()->routeIs('admin.fees.structures.*') ? 'active' : '' }}">
                                     <i class="bi bi-circle nav-icon"></i><p>Fee Structure</p>
                                 </a>
                             </li>
+
+                            {{-- NEW: Fee Components (catalog) --}}
+                            <li class="nav-item">
+                                <a href="{{ route('admin.fees.components.index') }}"
+                                    class="nav-link {{ request()->routeIs('admin.fees.components.*') ? 'active' : '' }}">
+                                    <i class="bi bi-circle nav-icon"></i><p>Fee Components</p>
+                                </a>
+                            </li>
+
+                            {{-- NEW: Academic / Fee Terms --}}
+                            <li class="nav-item">
+                                <a href="{{ route('admin.fees.terms.index') }}"
+                                    class="nav-link {{ request()->routeIs('admin.fees.terms.*') ? 'active' : '' }}">
+                                    <i class="bi bi-circle nav-icon"></i><p>Fee Terms</p>
+                                </a>
+                            </li>
+
                             <li class="nav-item">
                                 <a href="{{ route('admin.fees.invoices.index') }}"
-                                class="nav-link {{ request()->routeIs('admin.fees.invoices.*') ? 'active' : '' }}">
+                                    class="nav-link {{ request()->routeIs('admin.fees.invoices.*') ? 'active' : '' }}">
                                     <i class="bi bi-circle nav-icon"></i><p>Payments</p>
                                 </a>
                             </li>
+
                             <li class="nav-item">
                                 <a href="{{ route('admin.fees.reports.class-monthly') }}"
-                                class="nav-link {{ request()->routeIs('admin.fees.reports.*') ? 'active' : '' }}">
+                                    class="nav-link {{ request()->routeIs('admin.fees.reports.*') ? 'active' : '' }}">
                                     <i class="bi bi-circle nav-icon"></i><p>Reports</p>
                                 </a>
                             </li>
                         </ul>
                     </li>
+
 
 
                     <li class="nav-item {{ request()->routeIs('admin.class.*') || request()->routeIs('admin.subject.*') || request()->routeIs('admin.assign-subject.*') || request()->routeIs('admin.assign-class-teacher.*') || request()->routeIs('admin.class-timetable.*') ? 'menu-open' : '' }}">

@@ -44,8 +44,8 @@
                     <input type="text" name="mobile" value="{{ request('mobile') }}" class="form-control" placeholder="Mobile">
                   </div>
                   <div class="col-md-2">
-                    <label class="form-label mb-1">Roll Number</label>
-                    <input type="text" name="roll_number" value="{{ request('roll_number') }}" class="form-control" placeholder="e.g., 25XXXX">
+                    <label class="form-label mb-1">Student Id</label>
+                    <input type="text" name="id" value="{{ request('id') }}" class="form-control" placeholder="">
                   </div>
                   <div class="col-md-2">
                     <label class="form-label mb-1">Gender</label>

@@ -254,7 +254,7 @@ class StudentController extends Controller
         if ($request->filled('gender'))  $query->where('gender', $request->gender);
         if ($request->filled('status') || $request->status === '0') $query->where('status', (int)$request->status);
         if ($request->filled('class_id'))    $query->where('class_id', (int)$request->class_id);
-        if ($request->filled('roll_number')) $query->where('roll_number', 'like', '%'.$request->roll_number.'%');
+        if ($request->filled('id')) $query->where('id', 'like', '%'.$request->id.'%');
 
         $data['getRecord'] = $query->paginate(20)->appends($request->all());
 

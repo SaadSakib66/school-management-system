@@ -51,8 +51,8 @@
                     </select>
                   </div>
                   <div class="col-md-2">
-                    <label class="form-label mb-1">Occupation</label>
-                    <input type="text" name="occupation" value="{{ request('occupation') }}" class="form-control" placeholder="Occupation">
+                    <label class="form-label mb-1">Student Id</label>
+                    <input type="number" name="student_id" value="{{ request('student_id') }}" class="form-control" placeholder="Student Id">
                   </div>
                   <div class="col-md-2">
                     <label class="form-label mb-1">Status</label>

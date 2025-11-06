@@ -32,6 +32,8 @@ use App\Http\Controllers\Admin\FeeInvoiceController;
 use App\Http\Controllers\Admin\FeeReportController;
 use App\Http\Controllers\ParentPanel\ChildFeesController;
 use App\Http\Controllers\Student\MyFeesController;
+use App\Http\Controllers\Admin\FeeComponentController;
+use App\Http\Controllers\Admin\FeeTermController;
 
 /*
 |--------------------------------------------------------------------------
@@ -287,6 +289,24 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
         Route::put('structures/{id}', [FeeStructureController::class, 'update'])->name('structures.update');
         Route::delete('structures/{id}', [FeeStructureController::class, 'destroy'])->name('structures.destroy');
 
+        // ✅ NEW: Fee Components (catalog)
+        Route::get('components',                [FeeComponentController::class, 'index'])->name('components.index');
+        Route::get('components/create',         [FeeComponentController::class, 'create'])->name('components.create');
+        Route::post('components',               [FeeComponentController::class, 'store'])->name('components.store');
+        Route::get('components/{id}/edit',      [FeeComponentController::class, 'edit'])->name('components.edit');
+        Route::put('components/{id}',           [FeeComponentController::class, 'update'])->name('components.update');
+        Route::delete('components/{id}',        [FeeComponentController::class, 'destroy'])->name('components.destroy');
+        // (optional) quick status toggle
+        Route::patch('components/{id}/status',  [FeeComponentController::class, 'toggleStatus'])->name('components.toggle');
+
+        // ✅ NEW: Fee Terms (optional but recommended)
+        Route::get('terms',                   [FeeTermController::class, 'index'])->name('terms.index');
+        Route::get('terms/create',            [FeeTermController::class, 'create'])->name('terms.create');
+        Route::post('terms',                  [FeeTermController::class, 'store'])->name('terms.store');
+        Route::get('terms/{id}/edit',         [FeeTermController::class, 'edit'])->name('terms.edit');
+        Route::put('terms/{id}',              [FeeTermController::class, 'update'])->name('terms.update');
+        Route::delete('terms/{id}',           [FeeTermController::class, 'destroy'])->name('terms.destroy');
+
         // Invoices
         Route::get('invoices', [FeeInvoiceController::class, 'index'])->name('invoices.index');
         Route::get('invoices/generate', [FeeInvoiceController::class, 'generateForm'])->name('invoices.generate.form');
@@ -300,11 +320,15 @@ Route::prefix('admin')->middleware(['auth', 'admin_or_super_with_context', 'scho
 
         // Reports
         Route::get('reports/class-monthly', [FeeReportController::class, 'classMonthly'])->name('reports.class-monthly');
-        Route::get('class-monthly/pdf',    [FeeReportController::class, 'classMonthlyPdf'])->name('class_monthly.pdf');
+        Route::get('class-monthly/pdf',     [FeeReportController::class, 'classMonthlyPdf'])->name('class_monthly.pdf');
 
-        Route::get('student-statement',     [FeeReportController::class, 'studentStatement'])->name('student_statement');
-        Route::get('student-statement/pdf', [FeeReportController::class, 'studentStatementPdf'])->name('student_statement.pdf');
+        // ✅ NEW: Student Monthly Summary (list + pdf)
+        Route::get('reports/student-monthly', [FeeReportController::class, 'studentMonthly'])->name('reports.student-monthly');
+        Route::get('student-monthly/pdf',     [FeeReportController::class, 'studentMonthlyPdf'])->name('student_monthly.pdf');
+
+        // Student Statement (detail per month)
         Route::get('reports/student-statement', [FeeReportController::class, 'studentStatement'])->name('reports.student-statement');
+        Route::get('student-statement/pdf',     [FeeReportController::class, 'studentStatementPdf'])->name('student_statement.pdf');
     });
 
 

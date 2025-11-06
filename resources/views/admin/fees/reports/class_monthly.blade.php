@@ -1,9 +1,13 @@
+{{-- resources/views/admin/fees/reports/class_monthly.blade.php --}}
 @extends('admin.layout.layout')
+
 @section('content')
 <main class="app-main">
   <div class="app-content-header">
     <div class="container-fluid d-flex justify-content-between align-items-center">
       <h3 class="mb-0">Class Monthly Summary</h3>
+
+      {{-- ✅ View/Print PDF (filters preserved) --}}
       <a
         href="{{ route('admin.fees.class_monthly.pdf', request()->only(['academic_year','month','class_id'])) }}"
         class="btn btn-outline-primary"
@@ -18,12 +22,20 @@
     <div class="container-fluid">
       @include('admin.message')
 
-      {{-- Filters --}}
+      {{-- =========================
+           Filters
+         ========================= --}}
       <form method="get" class="card card-body mb-3">
         <div class="row g-2">
           <div class="col-md-3">
-            <input type="text" name="academic_year" value="{{ request('academic_year') }}" class="form-control" placeholder="Academic Year (e.g. 2025-2026)">
+            <input
+              type="text"
+              name="academic_year"
+              value="{{ request('academic_year') }}"
+              class="form-control"
+              placeholder="Academic Year (e.g. 2025-2026)">
           </div>
+
           <div class="col-md-3">
             <select name="month" class="form-select">
               <option value="">-- Month --</option>
@@ -32,6 +44,7 @@
               @endforeach
             </select>
           </div>
+
           <div class="col-md-3">
             <select name="class_id" class="form-select">
               <option value="">-- Class --</option>
@@ -41,7 +54,6 @@
             </select>
           </div>
 
-          {{-- Buttons: Filter + Reset --}}
           <div class="col-md-3 d-flex gap-2">
             <button class="btn btn-secondary flex-fill">Filter</button>
             <a href="{{ route('admin.fees.reports.class-monthly') }}" class="btn btn-outline-dark">Reset</a>
@@ -49,6 +61,9 @@
         </div>
       </form>
 
+      {{-- =========================
+           Table
+         ========================= --}}
       <div class="card card-primary card-outline">
         <div class="card-body table-responsive p-0">
           <table class="table table-striped mb-0">
@@ -64,25 +79,53 @@
               </tr>
             </thead>
             <tbody>
+              @php
+                $grandInv   = 0;
+                $grandBill  = 0.00;
+                $grandPaid  = 0.00;
+                $grandDue   = 0.00;
+              @endphp
+
               @forelse($rows as $r)
                 @php
-                  $billed = (float) $r->total_billed;
-                  $paid   = (float) $r->total_paid;
-                  $due    = max(0, $billed - $paid);
+                  // Controller আপডেটের পরে এগুলো থাকবে: computed_billed / computed_paid / computed_due
+                  $billed = (float) ($r->computed_billed ?? $r->total_billed ?? 0);
+                  $paid   = (float) ($r->computed_paid   ?? $r->total_paid   ?? 0);
+                  $due    = (float) ($r->computed_due    ?? max(0, $billed - $paid));
+
+                  $invCount = (int) ($r->total_invoices ?? 0);
+
+                  $grandInv  += $invCount;
+                  $grandBill += $billed;
+                  $grandPaid += $paid;
+                  $grandDue  += $due;
                 @endphp
                 <tr>
                   <td>{{ $r->class?->name }}</td>
                   <td>{{ $r->academic_year }}</td>
                   <td>{{ $months[$r->month] ?? $r->month }}</td>
-                  <td class="text-end">{{ number_format($r->total_invoices) }}</td>
+                  <td class="text-end">{{ number_format($invCount) }}</td>
                   <td class="text-end">{{ number_format($billed, 2) }}</td>
                   <td class="text-end">{{ number_format($paid, 2) }}</td>
                   <td class="text-end">{{ number_format($due, 2) }}</td>
                 </tr>
               @empty
-                <tr><td colspan="7" class="text-center text-muted py-4">No data</td></tr>
+                <tr>
+                  <td colspan="7" class="text-center text-muted py-4">No data</td>
+                </tr>
               @endforelse
             </tbody>
+
+            {{-- Grand totals --}}
+            <tfoot>
+              <tr>
+                <th colspan="3" class="text-end">Grand Total</th>
+                <th class="text-end">{{ number_format($grandInv) }}</th>
+                <th class="text-end">{{ number_format($grandBill, 2) }}</th>
+                <th class="text-end">{{ number_format($grandPaid, 2) }}</th>
+                <th class="text-end">{{ number_format($grandDue, 2) }}</th>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>

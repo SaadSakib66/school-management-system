@@ -42,6 +42,69 @@ class ParentController extends Controller
     /* --------------------------------
      * ADMIN: Parents CRUD
      * -------------------------------- */
+    // public function list(Request $request)
+    // {
+    //     if ($resp = $this->guardSchoolContext()) return $resp;
+
+    //     $schoolId = $this->currentSchoolId();
+
+    //     $query = User::query()
+    //         ->where('role', 'parent')
+    //         ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+    //         // 📌 newest on top
+    //         ->orderByDesc('id');
+
+    //     // 🔎 Filters
+    //     if ($request->filled('name')) {
+    //         $name = trim($request->name);
+    //         $query->where(function ($q) use ($name) {
+    //             $q->where('name', 'like', "%{$name}%")
+    //               ->orWhere('last_name', 'like', "%{$name}%");
+    //         });
+    //     }
+    //     if ($request->filled('email')) {
+    //         $query->where('email', 'like', '%'.$request->email.'%');
+    //     }
+    //     if ($request->filled('mobile')) {
+    //         $query->where('mobile_number', 'like', '%'.$request->mobile.'%');
+    //     }
+    //     if ($request->filled('gender')) {
+    //         $query->where('gender', $request->gender);
+    //     }
+    //     if ($request->filled('occupation')) {
+    //         $query->where('occupation', 'like', '%'.$request->occupation.'%');
+    //     }
+    //     // 🆕 filter by NID / Birth Certificate
+    //     if ($request->filled('nid_or_birthcertificate_no')) {
+    //         $query->where('nid_or_birthcertificate_no', 'like', '%'.$request->nid_or_birthcertificate_no.'%');
+    //     }
+    //     if ($request->filled('status') && $request->status !== '') {
+    //         $query->where('status', (int) $request->status);
+    //     }
+
+    //     $parents = $query->paginate(20)->appends($request->all());
+
+    //     // ⚡ Pull assigned student IDs for these parents (via pivot)
+    //     $assignedByParent = collect();
+    //     if ($parents->count()) {
+    //         $rows = DB::table('student_guardians')
+    //             ->select('parent_id', 'student_id')
+    //             ->when($schoolId !== null, fn($q) => $q->where('school_id', $schoolId))
+    //             ->whereIn('parent_id', $parents->pluck('id'))
+    //             ->get();
+
+    //         $assignedByParent = $rows->groupBy('parent_id')
+    //                                  ->map(fn($g) => $g->pluck('student_id')->all());
+    //     }
+
+    //     return view('admin.parent.list', [
+    //         'getRecord'        => $parents,
+    //         'assignedByParent' => $assignedByParent,
+    //         'header_title'     => 'Parent List',
+    //     ]);
+    // }
+
+
     public function list(Request $request)
     {
         if ($resp = $this->guardSchoolContext()) return $resp;
@@ -51,7 +114,6 @@ class ParentController extends Controller
         $query = User::query()
             ->where('role', 'parent')
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            // 📌 newest on top
             ->orderByDesc('id');
 
         // 🔎 Filters
@@ -59,25 +121,40 @@ class ParentController extends Controller
             $name = trim($request->name);
             $query->where(function ($q) use ($name) {
                 $q->where('name', 'like', "%{$name}%")
-                  ->orWhere('last_name', 'like', "%{$name}%");
+                ->orWhere('last_name', 'like', "%{$name}%");
             });
         }
+
         if ($request->filled('email')) {
             $query->where('email', 'like', '%'.$request->email.'%');
         }
+
         if ($request->filled('mobile')) {
             $query->where('mobile_number', 'like', '%'.$request->mobile.'%');
         }
+
         if ($request->filled('gender')) {
             $query->where('gender', $request->gender);
         }
-        if ($request->filled('occupation')) {
-            $query->where('occupation', 'like', '%'.$request->occupation.'%');
+
+        // 🔄 Occupation ফিল্টারটি বাদ দিয়ে Student ID ফিল্টার যোগ করা হলো
+        if ($request->integer('student_id')) {
+            $studentId = (int) $request->integer('student_id');
+
+            // parent ↔ student পিভট টেবিল (student_guardians) থেকে মিল খুঁজে আনা
+            $query->whereExists(function ($sub) use ($studentId, $schoolId) {
+                $sub->from('student_guardians')
+                    ->whereColumn('student_guardians.parent_id', 'users.id')
+                    ->where('student_guardians.student_id', $studentId)
+                    ->when($schoolId !== null, fn($qq) => $qq->where('student_guardians.school_id', $schoolId))
+                    ->selectRaw('1');
+            });
         }
-        // 🆕 filter by NID / Birth Certificate
+
         if ($request->filled('nid_or_birthcertificate_no')) {
             $query->where('nid_or_birthcertificate_no', 'like', '%'.$request->nid_or_birthcertificate_no.'%');
         }
+
         if ($request->filled('status') && $request->status !== '') {
             $query->where('status', (int) $request->status);
         }
@@ -94,7 +171,7 @@ class ParentController extends Controller
                 ->get();
 
             $assignedByParent = $rows->groupBy('parent_id')
-                                     ->map(fn($g) => $g->pluck('student_id')->all());
+                                    ->map(fn($g) => $g->pluck('student_id')->all());
         }
 
         return view('admin.parent.list', [
@@ -103,6 +180,7 @@ class ParentController extends Controller
             'header_title'     => 'Parent List',
         ]);
     }
+
 
     protected function schoolHeaderData(?int $forceSchoolId = null): array
     {

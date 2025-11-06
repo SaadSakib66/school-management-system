@@ -17,49 +17,84 @@
     <div class="container-fluid">
       @include('admin.message')
 
+      @if(session('error_details'))
+        <div class="alert alert-warning" style="white-space:pre-wrap">{{ session('error_details') }}</div>
+      @endif
+
       <div class="card card-primary card-outline">
         <form action="{{ route('admin.email.send') }}" method="POST" enctype="multipart/form-data">
           @csrf
 
           <div class="card-body">
-            <div class="row g-3">
-              {{-- Role --}}
-              <div class="col-md-3">
-                <label class="form-label">Role</label>
+
+            {{-- ======= Row: Role | Recipients ======= --}}
+            <div class="row g-3 align-items-start">
+              {{-- Role (left) --}}
+              <div class="col-lg-3 col-md-4 col-12">
+                <label class="form-label mb-1">Role</label>
                 <select id="role" name="role" class="form-select @error('role') is-invalid @enderror" required>
                   <option value="">-- Select --</option>
-                  <option value="student" {{ old('role')=='student'?'selected':'' }}>Student</option>
-                  <option value="teacher" {{ old('role')=='teacher'?'selected':'' }}>Teacher</option>
-                  <option value="parent"  {{ old('role')=='parent'?'selected':'' }}>Parent</option>
+                  <option value="student" {{ old('role') == 'student' ? 'selected' : '' }}>Student</option>
+                  <option value="teacher" {{ old('role') == 'teacher' ? 'selected' : '' }}>Teacher</option>
+                  <option value="parent" {{ old('role') == 'parent' ? 'selected' : '' }}>Parent</option>
                 </select>
-                @error('role') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                @error('role')
+                  <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+
+                <div class="form-check form-switch mt-3">
+                  <input class="form-check-input" type="checkbox" id="send_all" name="send_all" value="1"
+                         {{ old('send_all') ? 'checked' : '' }}>
+                  <label class="form-check-label" for="send_all">Send to all in this role</label>
+                </div>
               </div>
 
-              {{-- Recipient (Select2 AJAX) --}}
-              <div class="col-md-9">
-                <label class="form-label">Recipient</label>
-                <select id="recipient" name="recipient" class="form-select @error('recipient') is-invalid @enderror" required></select>
-                @error('recipient') <div class="invalid-feedback">{{ $message }}</div> @enderror
+              {{-- Recipients (right) --}}
+              <div class="col-lg-9 col-md-8 col-12">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <label class="form-label mb-0">Recipients</label>
+                  <small class="text-muted" id="recipients-count">0 selected</small>
+                </div>
+                <select id="recipients" name="recipients[]"
+                        class="form-select @error('recipients') is-invalid @enderror"
+                        multiple></select>
+                @error('recipients')
+                  <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+                @error('recipients.*')
+                  <div class="invalid-feedback d-block">{{ $message }}</div>
+                @enderror
+                <small class="text-muted d-block mt-1">
+                  Type to search; you can select multiple. Disabled when "Send to all in this role" is ON or no role is selected.
+                </small>
               </div>
+            </div>
 
-              {{-- Subject --}}
+            <hr class="my-4">
+
+            {{-- Subject --}}
+            <div class="row g-3">
               <div class="col-12">
-                <label class="form-label">Subject</label>
+                <label class="form-label mb-1">Subject</label>
                 <input type="text" name="subject" class="form-control @error('subject') is-invalid @enderror"
                        value="{{ old('subject') }}" required>
-                @error('subject') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                @error('subject')
+                  <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
               </div>
 
               {{-- Message --}}
               <div class="col-12">
-                <label class="form-label">Message</label>
+                <label class="form-label mb-1">Message</label>
                 <textarea name="message" id="message" class="summernote @error('message') is-invalid @enderror">{{ old('message') }}</textarea>
-                @error('message') <div class="text-danger small mt-1">{{ $message }}</div> @enderror
+                @error('message')
+                  <div class="text-danger small mt-1">{{ $message }}</div>
+                @enderror
               </div>
 
               {{-- Attachments --}}
               <div class="col-12">
-                <label class="form-label">Attachments (optional)</label>
+                <label class="form-label mb-1">Attachments (optional)</label>
                 <input type="file" name="attachments[]" class="form-control" multiple>
                 <small class="text-muted">Max 5MB per file.</small>
               </div>
@@ -67,8 +102,12 @@
           </div>
 
           <div class="card-footer d-flex gap-2">
-            <button class="btn btn-primary">Send</button>
-            <a href="{{ route('admin.email.logs') }}" class="btn btn-outline-secondary">Logs</a>
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-paper-plane me-1"></i> Send
+            </button>
+            <a href="{{ route('admin.email.logs') }}" class="btn btn-outline-secondary">
+              <i class="fas fa-list me-1"></i> Logs
+            </a>
           </div>
         </form>
       </div>
@@ -78,11 +117,51 @@
 @endsection
 
 @push('styles')
-  {{-- Select2 + Summernote (Bootstrap 5 build) --}}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-bs5.min.css">
   <style>
-    .note-editor .note-editable { min-height: 260px; }
+    /* Summernote editor min height */
+    .note-editor .note-editable {
+      min-height: 280px;
+    }
+
+    /* Select2 recipients styling - compact when empty/disabled */
+    .select2-container--default .select2-selection--multiple {
+      min-height: 38px !important;
+      padding: 4px 8px;
+      border-color: var(--bs-border-color, #ced4da);
+    }
+
+    .select2-container--default .select2-selection--multiple .select2-selection__rendered {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      align-items: center;
+    }
+
+    /* Show the search input */
+    .select2-container--default .select2-selection--multiple .select2-search--inline {
+      display: inline-block !important;
+    }
+
+    .select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field {
+      min-width: 200px !important;
+      height: 28px !important;
+      margin: 0 !important;
+      padding: 0 4px !important;
+    }
+
+    /* Ensure proper alignment and spacing */
+    .select2-container {
+      max-width: 100%;
+    }
+
+    /* Keep select2 dropdown compact */
+    .select2-container--default .select2-selection--multiple .select2-selection__choice {
+      margin: 2px 0;
+      padding: 2px 8px;
+      font-size: 0.875rem;
+    }
   </style>
 @endpush
 
@@ -91,78 +170,87 @@
   <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-bs5.min.js"></script>
   <script>
     $(function () {
-      // Summernote
-      $('.summernote').summernote({ height: 260 });
+      // Initialize Summernote
+      $('.summernote').summernote({
+        height: 280,
+        toolbar: [
+          ['style', ['style']],
+          ['font', ['bold', 'underline', 'clear']],
+          ['color', ['color']],
+          ['para', ['ul', 'ol', 'paragraph']],
+          ['table', ['table']],
+          ['insert', ['link', 'picture']],
+          ['view', ['fullscreen', 'codeview', 'help']]
+        ]
+      });
 
-      const $role   = $('#role');
-      const $rec    = $('#recipient');
-      const url     = "{{ route('admin.email.recipients') }}";
-      const oldRec  = "{{ old('recipient') }}";
+      // Cache DOM elements
+      const $role = $('#role');
+      const $recs = $('#recipients');
+      const $all = $('#send_all');
+      const $count = $('#recipients-count');
+      const url = "{{ route('admin.email.recipients') }}";
 
-      function populatePlainSelect(options) {
-        $rec.empty();
-        if (!options || !options.length) {
-          $rec.append(new Option('No recipients found for this role', '', false, false));
-          return;
-        }
-        options.forEach(o => $rec.append(new Option(o.text, o.id, false, false)));
+      /**
+       * Update the recipient count display
+       */
+      function updateCount() {
+        const val = $recs.val() || [];
+        $count.text((val.length || 0) + ' selected');
       }
 
-      function initRecipients() {
-        // tear down any previous Select2 instance
-        if ($.fn.select2) { try { $rec.select2('destroy'); } catch(e){} }
-        $rec.empty();
-
-        const role = $role.val();
-        if (!role) { return; }
-
-        // Show loading placeholder
-        $rec.append(new Option('Loading recipients…', '', true, true)).prop('disabled', true);
-
-        // Preload first page
-        $.ajax({
+      /**
+       * Initialize Select2 for recipients
+       */
+      $recs.select2({
+        width: '100%',
+        placeholder: 'Select recipients…',
+        multiple: true,
+        allowClear: true,
+        dropdownParent: $('body'),
+        minimumInputLength: 0,
+        ajax: {
           url: url,
-          data: { role, q: '' },
-          dataType: 'json'
-        })
-        .done(function (data) {
-          const results = (data && data.results) ? data.results : [];
-          populatePlainSelect(results);
-          $rec.prop('disabled', false);
+          dataType: 'json',
+          delay: 200,
+          data: function(params) {
+            return {
+              q: params.term || '',
+              role: $role.val() || ''
+            };
+          },
+          processResults: function(data) {
+            return {
+              results: (data && data.results) ? data.results : []
+            };
+          },
+          cache: true
+        }
+      }).on('change', updateCount);
 
-          // Enhance with Select2 if available
-          if ($.fn.select2) {
-            $rec.select2({
-              width: '100%',
-              placeholder: 'Select a recipient…',
-              allowClear: true,
-              minimumInputLength: 0,
-              dropdownParent: $('body'),
-              ajax: {
-                url: url,
-                dataType: 'json',
-                delay: 200,
-                data: params => ({ q: params.term || '', role }),
-                processResults: data => ({ results: data.results }),
-                cache: true
-              }
-            });
-          }
+      /**
+       * Enable/disable recipients based on role selection and "send all" checkbox
+       */
+      function refreshRecipientsState() {
+        const roleVal = $role.val();
+        const disable = $all.is(':checked') || !roleVal;
 
-          // Reselect previous recipient after validation error
-          if (oldRec) { $rec.val(oldRec).trigger('change'); }
-        })
-        .fail(function (xhr) {
-          console.error('Recipients load failed:', xhr.status, xhr.responseText);
-          $rec.empty()
-              .append(new Option('Error loading recipients — check console/network', '', true, true))
-              .prop('disabled', true);
-        });
+        $recs.prop('disabled', disable);
+
+        if (disable) {
+          // Clear selection when disabled
+          $recs.val(null).trigger('change');
+        }
+
+        updateCount();
       }
 
-      if ($role.val()) { initRecipients(); }  // restore after validation errors
-      $role.on('change', initRecipients);
+      // Event listeners
+      $role.on('change', refreshRecipientsState);
+      $all.on('change', refreshRecipientsState);
+
+      // Initialize state on page load
+      refreshRecipientsState();
     });
   </script>
 @endpush
-

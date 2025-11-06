@@ -4,8 +4,12 @@
   <meta charset="utf-8">
   <title>Class Monthly Summary</title>
   <style>
+    /* ↓ Control the page margins Dompdf uses */
+    @page {
+        margin: 8px 18px 16px 18px; /* top, right, bottom, left */
+    }
     body { font-family: DejaVu Sans, sans-serif; font-size: 12px; }
-    h2 { margin: 0 0 10px; }
+    h2 { margin: 6px 0 10px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
     th { background: #f2f2f2; }
@@ -14,6 +18,10 @@
   </style>
 </head>
 <body>
+
+  {{-- ✅ Universal School Header --}}
+  @include('pdf.partials.school_header')
+
   <h2>Class Monthly Summary</h2>
   @if(!empty($filters))
     <p class="small">

@@ -1,106 +1,246 @@
 @extends('admin.layout.layout')
-@section('content')
 
+@section('content')
 <main class="app-main">
+  {{-- Header --}}
   <div class="app-content-header">
     <div class="container-fluid">
       <div class="row align-items-center">
-        <div class="col-sm-6"><h3 class="mb-0">Add Fee Structure</h3></div>
-        <div class="col-sm-6 text-sm-end">
-          <a href="{{ route('admin.fees.structures.index') }}" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-left"></i> Back to List
+        <div class="col">
+          <h3 class="mb-0">Create Fee Structure</h3>
+        </div>
+        <div class="col text-end">
+          <a href="{{ route('admin.fees.structures.index') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back
           </a>
         </div>
       </div>
     </div>
   </div>
 
+  {{-- Body --}}
   <div class="app-content">
     <div class="container-fluid">
-      <div class="row"><div class="col-md-8">
+      @include('admin.message')
 
-        @include('admin.message')
+      <form action="{{ route('admin.fees.structures.store') }}" method="post" autocomplete="off">
+        @csrf
 
-        <div class="card card-primary card-outline">
-          <div class="card-header"><h3 class="card-title">Fee Structure Details</h3></div>
-          <form method="POST" action="{{ route('admin.fees.structures.store') }}">
-            @csrf
-            <div class="card-body row g-3">
+        <div class="row g-3">
+          {{-- Base tuition --}}
+          <div class="col-12 col-xl-6">
+            <div class="card card-primary card-outline h-100">
+              <div class="card-header"><strong>Base Tuition</strong></div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <label class="form-label">Class <span class="text-danger">*</span></label>
+                  <select name="class_id" class="form-select @error('class_id') is-invalid @enderror" required>
+                    <option value="">-- Select class --</option>
+                    @foreach($classes as $c)
+                      <option value="{{ $c->id }}" {{ old('class_id')==$c->id?'selected':'' }}>
+                        {{ $c->name }}
+                      </option>
+                    @endforeach
+                  </select>
+                  @error('class_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
 
-              <div class="col-md-6">
-                <label class="form-label">Class <span class="text-danger">*</span></label>
-                <select name="class_id" class="form-select @error('class_id') is-invalid @enderror" required>
-                  <option value="">-- Select Class --</option>
-                  @foreach($classes as $c)
-                    <option value="{{ $c->id }}" {{ old('class_id')==$c->id?'selected':'' }}>{{ $c->name }}</option>
-                  @endforeach
-                </select>
-                @error('class_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                <div class="mb-3">
+                  <label class="form-label">Academic Year <span class="text-danger">*</span></label>
+                  <input type="text" name="academic_year" value="{{ old('academic_year') }}"
+                         class="form-control @error('academic_year') is-invalid @enderror"
+                         placeholder="e.g. 2025-2026" required>
+                  @error('academic_year')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <label class="form-label">Annual Fee (base) <span class="text-danger">*</span></label>
+                    <input type="number" step="0.01" min="0" name="annual_fee" id="annual_fee"
+                           value="{{ old('annual_fee') }}"
+                           class="form-control @error('annual_fee') is-invalid @enderror" required>
+                    @error('annual_fee')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Monthly (auto)</label>
+                    <input type="text" id="monthly_preview" class="form-control" value="0.00" readonly>
+                    <div class="form-text">Calculated as: Annual / 12</div>
+                  </div>
+                </div>
+
+                <div class="row g-2 mt-2">
+                  <div class="col-md-6">
+                    <label class="form-label">Effective From</label>
+                    <input type="date" name="effective_from" value="{{ old('effective_from') }}" class="form-control">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Effective To</label>
+                    <input type="date" name="effective_to" value="{{ old('effective_to') }}" class="form-control">
+                  </div>
+                </div>
               </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Academic Year <span class="text-danger">*</span></label>
-                <input type="text" name="academic_year" class="form-control @error('academic_year') is-invalid @enderror"
-                       placeholder="2025-2026" value="{{ old('academic_year') }}" required>
-                @error('academic_year')<div class="invalid-feedback">{{ $message }}</div>@enderror
-              </div>
-
-              {{-- Annual fee is the source of truth --}}
-              <div class="col-md-6">
-                <label class="form-label">Annual Fee <span class="text-danger">*</span></label>
-                <input type="number" step="0.01" min="0" name="annual_fee"
-                       class="form-control @error('annual_fee') is-invalid @enderror"
-                       value="{{ old('annual_fee') }}" required id="annualFee">
-                @error('annual_fee')<div class="invalid-feedback">{{ $message }}</div>@enderror
-              </div>
-
-              {{-- Monthly fee is auto-calculated = annual / 12 (read-only) --}}
-              <div class="col-md-6">
-                <label class="form-label">Monthly Fee (auto)</label>
-                <input type="text" class="form-control" id="monthlyFee" value=""
-                       placeholder="Will calculate from Annual" readonly>
-              </div>
-
-              <div class="col-md-3">
-                <label class="form-label">Effective From</label>
-                <input type="date" name="effective_from" class="form-control @error('effective_from') is-invalid @enderror"
-                       value="{{ old('effective_from') }}">
-                @error('effective_from')<div class="invalid-feedback">{{ $message }}</div>@enderror
-              </div>
-
-              <div class="col-md-3">
-                <label class="form-label">Effective To</label>
-                <input type="date" name="effective_to" class="form-control @error('effective_to') is-invalid @enderror"
-                       value="{{ old('effective_to') }}">
-                @error('effective_to')<div class="invalid-feedback">{{ $message }}</div>@enderror
-              </div>
-
             </div>
-            <div class="card-footer d-flex gap-2">
-              <button class="btn btn-primary"><i class="bi bi-save"></i> Save</button>
-              <button type="reset" class="btn btn-warning"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
-              <a href="{{ route('admin.fees.structures.index') }}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+
+          {{-- Components --}}
+          <div class="col-12 col-xl-6">
+            <div class="card card-primary card-outline h-100">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>Additional Components</strong>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="addComponentRow()">
+                  <i class="bi bi-plus-lg"></i> Add Component
+                </button>
+              </div>
+              <div class="card-body">
+                <div id="component-rows"></div>
+                <div class="text-muted small">
+                  <ul class="mb-0">
+                    <li><strong>Include in monthly</strong>: যেমন Transport/Hostel হলে মাসিক বিলে যোগ হবে।</li>
+                    <li><strong>Bill month</strong>: নির্দিষ্ট মাস নির্বাচন করলে শুধু ঐ মাসের ইনভয়েসে বেস টিউশনের সাথে এই কম্পোনেন্ট যোগ হবে।</li>
+                    <li><strong>Calc Type</strong>: ডিফল্ট কম্পোনেন্টের calc টাইপ পরিবর্তন করতে চাইলে “Fixed / % of base” বাছাই করুন।</li>
+                  </ul>
+                </div>
+              </div>
             </div>
-          </form>
+          </div>
+
+          {{-- Submit --}}
+          <div class="col-12">
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary"><i class="bi bi-check2-circle"></i> Save</button>
+              <a href="{{ route('admin.fees.structures.index') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+          </div>
         </div>
+      </form>
 
-      </div></div>
     </div>
   </div>
 </main>
+@endsection
 
 @push('scripts')
 <script>
-  (function () {
-    const annual = document.getElementById('annualFee');
-    const monthly = document.getElementById('monthlyFee');
-    const calc = () => {
-      const a = parseFloat(annual.value);
-      if (!isNaN(a)) monthly.value = (a / 12).toFixed(2); else monthly.value = '';
-    };
-    annual.addEventListener('input', calc);
-    calc();
-  })();
+  // ---- Live monthly preview
+  function refreshMonthly(){
+    const annual = parseFloat(document.getElementById('annual_fee')?.value || '0');
+    const m = isFinite(annual) ? (annual/12) : 0;
+    document.getElementById('monthly_preview').value = m.toFixed(2);
+  }
+  document.getElementById('annual_fee')?.addEventListener('input', refreshMonthly);
+  refreshMonthly();
+</script>
+
+@php
+  $componentsJs = $components->map(function($c){
+      return [
+          'id'             => $c->id,
+          'name'           => $c->name,
+          'frequency'      => $c->frequency,
+          'calc_type'      => $c->calc_type,
+      ];
+  })->values();
+
+  $termsJs = ($terms ?? collect())->map(function($t){
+      return [
+          'id'            => $t->id,
+          'name'          => $t->name,
+          'academic_year' => $t->academic_year,
+      ];
+  })->values();
+@endphp
+
+<script>
+  const COMPONENTS = @json($componentsJs);
+  const TERMS = @json($termsJs);
+
+  function componentOptionsHtml(selectedId=null){
+    let html = '<option value="">-- Select component --</option>';
+    (COMPONENTS || []).forEach(function(c){
+      const sel = (selectedId && Number(selectedId)===Number(c.id)) ? 'selected' : '';
+      html += `<option value="${c.id}" ${sel}>${c.name} (${c.frequency})</option>`;
+    });
+    return html;
+  }
+
+  function termOptionsHtml(selectedId=null){
+    let html = '<option value="">-- No term --</option>';
+    (TERMS || []).forEach(function(t){
+      const sel = (selectedId && Number(selectedId)===Number(t.id)) ? 'selected' : '';
+      html += `<option value="${t.id}" ${sel}>${t.academic_year} — ${t.name}</option>`;
+    });
+    return html;
+  }
+
+  function monthOptionsHtml(selected=null){
+    const months = [
+      [1,'January'],[2,'February'],[3,'March'],[4,'April'],[5,'May'],[6,'June'],
+      [7,'July'],[8,'August'],[9,'September'],[10,'October'],[11,'November'],[12,'December']
+    ];
+    let html = '<option value="">-- Select month --</option>';
+    months.forEach(([val,label])=>{
+      const sel = (selected && Number(selected)===Number(val)) ? 'selected' : '';
+      html += `<option value="${val}" ${sel}>${label}</option>`;
+    });
+    return html;
+  }
+
+  function addComponentRow(prefill=null){
+    const container = document.getElementById('component-rows');
+    const idx = container.querySelectorAll('.comp-row').length;
+
+    const selectedId     = prefill?.component_id ?? '';
+    const calcType       = prefill?.calc_type ?? '';
+    const includeMonthly = prefill?.include_in_monthly ? 'checked' : '';
+    const billMonth      = prefill?.bill_month ?? '';
+    const termId         = prefill?.fee_term_id ?? '';
+
+    const row = document.createElement('div');
+    row.className = 'comp-row border rounded p-2 mb-2';
+
+    row.innerHTML = `
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label">Component</label>
+          <select name="components[${idx}][component_id]" class="form-select" required>
+            ${componentOptionsHtml(selectedId)}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Calc Type</label>
+          <select name="components[${idx}][calc_type]" class="form-select">
+            <option value="">Default</option>
+            <option value="fixed" ${calcType==='fixed'?'selected':''}>Fixed</option>
+            <option value="percent_of_base" ${calcType==='percent_of_base'?'selected':''}>% of base</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Term (optional)</label>
+          <select name="components[${idx}][fee_term_id]" class="form-select">
+            ${termOptionsHtml(termId)}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Bill month</label>
+          <select name="components[${idx}][bill_month]" class="form-select">
+            ${monthOptionsHtml(billMonth)}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <div class="form-check mt-4">
+            <input type="hidden" name="components[${idx}][include_in_monthly]" value="0">
+            <input type="checkbox" class="form-check-input" id="incm_${idx}" name="components[${idx}][include_in_monthly]" value="1" ${includeMonthly}>
+            <label class="form-check-label" for="incm_${idx}">Include in monthly</label>
+          </div>
+        </div>
+      </div>
+      <div class="text-end mt-2">
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.comp-row').remove()">Remove</button>
+      </div>
+    `;
+    container.appendChild(row);
+  }
+
+  // create page -> initially empty
 </script>
 @endpush
-@endsection

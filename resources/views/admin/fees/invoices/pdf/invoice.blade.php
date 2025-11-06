@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <title>Invoice</title>
   <style>
+    /* ↓ Control the page margins Dompdf uses */
+    @page {
+        margin: 8px 18px 16px 18px; /* top, right, bottom, left */
+    }
     body { font-family: DejaVu Sans, sans-serif; font-size: 12px; color:#222; }
     .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 10px; }
     .school h2 { margin:0 0 2px; font-size:18px; }
@@ -22,10 +26,15 @@
     $student   = $invoice->student;
     $class     = $invoice->class;
     $monthName = $months[$invoice->month] ?? $invoice->month;
-    $billed    = (float) ($invoice->amount - $invoice->discount + $invoice->fine);
-    $paid      = (float) $invoice->payments->sum('amount');
-    $due       = max(0, $billed - $paid);
+
+    // ✅ Use final billed that already includes discount (-) and fine (+)
+    $billed = (float) ($breakdown['billed'] ?? $breakdown['subtotal'] ?? 0);
+    $paid   = (float) ($breakdown['paid']   ?? 0);
+    $due    = (float) ($breakdown['due']    ?? max(0, $billed - $paid));
   @endphp
+
+  {{-- ✅ Universal School Header --}}
+  @include('pdf.partials.school_header')
 
   <div class="header">
     <div class="school">
@@ -59,6 +68,7 @@
     </table>
   </div>
 
+  {{-- Breakdown --}}
   <table>
     <thead>
       <tr>
@@ -67,18 +77,12 @@
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td>Monthly Tuition ({{ $monthName }} {{ $invoice->academic_year }})</td>
-        <td class="right">{{ number_format($invoice->amount,2) }}</td>
-      </tr>
-      <tr>
-        <td>Discount</td>
-        <td class="right">-{{ number_format($invoice->discount,2) }}</td>
-      </tr>
-      <tr>
-        <td>Fine</td>
-        <td class="right">{{ number_format($invoice->fine,2) }}</td>
-      </tr>
+      @foreach(($breakdown['items'] ?? []) as $row)
+        <tr>
+          <td>{{ $row['label'] }}</td>
+          <td class="right">{{ number_format($row['amount'],2) }}</td>
+        </tr>
+      @endforeach
       <tr>
         <th>Total Billed</th>
         <th class="right">{{ number_format($billed,2) }}</th>

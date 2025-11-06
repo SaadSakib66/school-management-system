@@ -51,8 +51,8 @@
 
   <div class="right">
     <table class="tbl">
-      <tr><td class="label">First Name</td><td>{{ $user->name }}</td></tr>
-      <tr><td class="label">Last Name</td><td>{{ $user->last_name ?? '' }}</td></tr>
+      <tr><td class="label">Name</td><td>{{ $user->name }} {{ $user->last_name ?? '' }}</td></tr>
+      <tr><td class="label">Student Id</td><td>{{ $user->id ?? '' }}</td></tr>
       <tr><td class="label">Gender</td><td>{{ $user->gender ?? 'N/A' }}</td></tr>
       <tr><td class="label">Email</td><td>{{ $user->email }}</td></tr>
       <tr><td class="label">Mobile</td><td>{{ $user->mobile_number ?? 'N/A' }}</td></tr>

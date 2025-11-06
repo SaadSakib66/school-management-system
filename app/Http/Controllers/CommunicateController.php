@@ -18,6 +18,8 @@ use Mpdf\Config\ConfigVariables;
 use Mpdf\Config\FontVariables;
 use Mpdf\Output\Destination;
 use App\Support\Concerns\BuildsSchoolHeader;
+use App\Jobs\SendIndividualEmailJob;
+use Illuminate\Support\Facades\Storage;
 
 class CommunicateController extends Controller
 {
@@ -243,88 +245,121 @@ class CommunicateController extends Controller
         ]);
     }
 
-    public function emailSend(Request $request)
-    {
-        $data = $request->validate([
-            'role'          => 'required|in:student,teacher,parent',
-            'recipient'     => 'required|integer|exists:users,id',
-            'subject'       => 'required|string|max:255',
-            'message'       => 'required|string',
-            'attachments.*' => 'file|max:5120', // 5MB each
-        ]);
 
-        // Recipient is school-scoped (User model scope applies)
-        $user = User::where('id', $data['recipient'])
-            ->whereRaw('LOWER(role) = ?', [strtolower($data['role'])])
-            ->firstOrFail();
+public function emailSend(Request $request)
+{
+    $data = $request->validate([
+        'role'              => 'required|in:student,teacher,parent',
+        'send_all'          => 'nullable|boolean',
+        'recipients'        => 'array',
+        'recipients.*'      => 'integer|exists:users,id',
+        'subject'           => 'required|string|max:255',
+        'message'           => 'required|string',
+        'attachments.*'     => 'file|max:5120', // 5MB each
+    ]);
 
-        if (empty($user->email)) {
-            return back()->withErrors(['recipient' => 'Selected user has no email address.'])->withInput();
-        }
+    $role = strtolower($data['role']);
 
-        // Sanitize the WYSIWYG HTML (keep a minimal allow-list)
-        $allowed = '<p><br><b><strong><i><em><u><ul><ol><li><a>';
-        $html    = strip_tags($data['message'], $allowed);
-        $text    = trim(strip_tags(str_replace(['<br>', '<br/>', '</p>'], "\n", $html)));
+    // Sanitize html once
+    $allowed = '<p><br><b><strong><i><em><u><ul><ol><li><a>';
+    $html    = strip_tags($data['message'], $allowed);
+    $text    = trim(strip_tags(str_replace(['<br>', '<br/>', '</p>'], "\n", $html)));
 
-        $mailable = new IndividualNotificationMail($data['subject'], $html, $text);
-
-        if ($request->hasFile('attachments')) {
-            foreach ((array) $request->file('attachments') as $file) {
-                if ($file && $file->isValid()) {
-                    $mailable->attach($file->getRealPath(), [
-                        'as'   => $file->getClientOriginalName(),
-                        'mime' => $file->getMimeType(),
-                    ]);
-                }
+    // Persist attachments so worker can read later
+    $attachments = [];
+    if ($request->hasFile('attachments')) {
+        foreach ((array) $request->file('attachments') as $file) {
+            if ($file && $file->isValid()) {
+                $path = $file->store('tmp-mail'); // storage/app/tmp-mail/....
+                $attachments[] = [
+                    'path' => storage_path('app/'.$path),
+                    'as'   => $file->getClientOriginalName(),
+                    'mime' => $file->getMimeType(),
+                ];
             }
         }
+    }
 
-        $status = 'sent';
-        $error  = null;
-
-        try {
-            Mail::to($user->email)->send($mailable);
-        } catch (\Throwable $e) {
-            $status = 'failed';
-            $error  = $e->getMessage();
-            Log::error('Email send failed', [
-                'to'    => $user->email,
-                'role'  => $data['role'],
-                'error' => $error,
-            ]);
-
-            EmailLog::create([
-                'role'       => $data['role'],
-                'user_id'    => $user->id,
-                'email'      => $user->email,
-                'subject'    => $data['subject'],
-                'body_html'  => $html,
-                'body_text'  => $text,
-                'status'     => $status,
-                'error'      => $error,
-                'sent_by'    => Auth::id(),
-                'sent_at'    => now(),
-            ]);
-
-            return back()->with('error', "Email failed: {$error}")->withInput();
+    // Recipients
+    if (!empty($data['send_all'])) {
+        $users = \App\Models\User::whereRaw('LOWER(role) = ?', [$role])
+            ->whereNotNull('email')->where('email', '<>', '')
+            ->orderBy('id')
+            ->get(['id','name','email']);
+    } else {
+        $ids = $data['recipients'] ?? [];
+        if (empty($ids)) {
+            return back()->withErrors([
+                'recipients' => 'Select at least one recipient or check "Send to all in role".'
+            ])->withInput();
         }
+        $users = \App\Models\User::whereIn('id', $ids)
+            ->whereRaw('LOWER(role) = ?', [$role])
+            ->orderBy('id')
+            ->get(['id','name','email']);
+    }
 
-        EmailLog::create([
-            'role'       => $data['role'],
-            'user_id'    => $user->id,
-            'email'      => $user->email,
+    if ($users->isEmpty()) {
+        return back()->withErrors(['recipients' => 'No valid recipients found for this role.'])->withInput();
+    }
+
+    $senderId = \Illuminate\Support\Facades\Auth::id() ?? 0;
+
+    // ---- Throttle config (env থেকে কাস্টমাইজ করা যাবে) ----
+    $stepSeconds   = (int) env('MAIL_DISPATCH_SPACING', 5);   // প্রতি মেইলের মাঝে gap
+    $burstSize     = (int) env('MAIL_DISPATCH_BURST', 50);    // কয়টা পরে pause
+    $burstPauseSec = (int) env('MAIL_DISPATCH_PAUSE', 60);    // pause কত সেকেন্ড
+    // -------------------------------------------------------
+
+    $queued = 0;
+    $delaySeconds = 0;
+    $count = 0;
+
+    foreach ($users as $u) {
+        // 1) Log row → QUEUED (UI তে সাথে সাথে দেখাতে)
+        $log = \App\Models\EmailLog::create([
+            'role'       => $role,
+            'user_id'    => $u->id,
+            'email'      => $u->email ?? null,
             'subject'    => $data['subject'],
             'body_html'  => $html,
             'body_text'  => $text,
-            'status'     => $status,
-            'error'      => $error,
-            'sent_by'    => Auth::id(),
+            'status'     => 'queued',
+            'error'      => null,
+            'sent_by'    => $senderId,
             'sent_at'    => now(),
         ]);
 
-        return redirect()->route('admin.email.form')->with('success', 'Email sent successfully.');
+        // 2) Dispatch job → staggered delay
+        dispatch(new \App\Jobs\SendIndividualEmailJob(
+            logId:       $log->id,
+            userId:      $u->id,
+            role:        $role,
+            subject:     $data['subject'],
+            html:        $html,
+            text:        $text,
+            attachments: $attachments,
+            senderId:    $senderId
+        ))
+            ->onQueue('emails')
+            ->delay(now()->addSeconds($delaySeconds));
+
+        $queued++;
+        $count++;
+
+        // পরের মেইলের জন্য স্টেপ ডিলে যোগ করুন
+        $delaySeconds += $stepSeconds;
+
+        // প্রতি burstSize মেইলের পর এক্সট্রা pause দিন (সামগ্রিক থ্রটল কমাতে)
+        if ($burstSize > 0 && ($count % $burstSize) === 0) {
+            $delaySeconds += $burstPauseSec;
+        }
     }
+
+    return redirect()->route('admin.email.form')
+        ->with('success', "Queued {$queued} email(s). They will be delivered shortly.");
+}
+
 
     public function emailLogs()
     {
